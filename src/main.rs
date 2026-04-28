@@ -1,4 +1,5 @@
 mod intent;
+mod tui;
 
 use anyhow::Result;
 use crossterm::{
@@ -6,14 +7,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::Line,
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
-    Frame, Terminal,
-};
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io,
     sync::Arc,
@@ -22,21 +16,6 @@ use std::{
 use tokio::sync::{mpsc, Mutex};
 
 use intent::{IntentRouter, ParsedIntent};
-
-const ANIMATION_FRAMES: &[&str; 12] = &[
-    "        \n        \n        \n    .   \n        \n        \n        \n        ",
-    "        \n        \n    ·   \n   ·.·  \n    ·   \n        \n        \n        ",
-    "        \n    .   \n   · ·  \n  · o · \n   · ·  \n    .   \n        \n        ",
-    "    ·   \n  ·   · \n ·     · \n·   o   ·\n ·     · \n  ·   · \n    ·   \n        ",
-    "   · ·  \n  · · · \n · ·o· · \n· ·o·o· ·\n · ·o· · \n  · · · \n   · ·  \n        ",
-    "  · · · \n · · · · \n· · o · ·\n· ·oOo· ·\n· · o · ·\n · · · · \n  · · · \n        ",
-    " ·  ·  · \n·  · ·  ·\n · · · · \n· · O · ·\n · · · · \n·  · ·  ·\n ·  ·  · \n        ",
-    "·   ·   ·\n ·  ·  · \n· · O · ·\n· O o O ·\n· · O · ·\n ·  ·  · \n·   ·   ·\n        ",
-    " ·  ·  · \n·  · ·  ·\n · · · · \n· · O · ·\n · · · · \n·  · ·  ·\n ·  ·  · \n        ",
-    "        \n  · · · \n · · · · \n · ·o· · \n · · · · \n  · · · \n        \n        ",
-    "        \n        \n   · ·  \n  · · · \n   · ·  \n        \n        \n        ",
-    "        \n        \n        \n    ·   \n        \n        \n        \n        ",
-];
 
 pub enum SystemEvent {
     Input(crossterm::event::KeyEvent),
@@ -48,20 +27,20 @@ pub enum SystemEvent {
     RouterOnline,
 }
 
-struct AppState {
-    should_quit: bool,
-    input_buffer: String,
-    logs: Vec<String>,
-    cpu_usage: u16,
-    ram_usage_gb: u16,
-    nvidia_calls_per_min: u16,
-    active_pipelines: Vec<(String, String)>,
-    router_online: bool,
-    router_status: String,
-    synth_status: String,
-    system_state: String,
-    nvidia_api_status: String,
-    animation_frame: usize,
+pub struct AppState {
+    pub should_quit: bool,
+    pub input_buffer: String,
+    pub logs: Vec<String>,
+    pub cpu_usage: u16,
+    pub ram_usage_gb: u16,
+    pub nvidia_calls_per_min: u16,
+    pub active_pipelines: Vec<(String, String)>,
+    pub router_online: bool,
+    pub router_status: String,
+    pub synth_status: String,
+    pub system_state: String,
+    pub nvidia_api_status: String,
+    pub animation_frame: usize,
 }
 
 impl AppState {
@@ -147,7 +126,7 @@ async fn main() -> Result<()> {
 
     loop {
         let mut state = app_state.lock().await;
-        terminal.draw(|f| draw_ui(f, &state))?;
+        terminal.draw(|f| tui::render(f, &state))?;
 
         if let Some(event) = rx.recv().await {
             match event {
@@ -230,125 +209,4 @@ async fn main() -> Result<()> {
     execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
     Ok(())
-}
-
-fn draw_ui(f: &mut Frame, state: &AppState) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .margin(1)
-        .constraints([Constraint::Percentage(99), Constraint::Percentage(1)].as_ref())
-        .split(f.size());
-
-    let main_split = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(12), Constraint::Percentage(88)])
-        .split(chunks[0]);
-
-    let left_chunk = main_split[0];
-    let right_chunk = main_split[1];
-
-    let left_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Percentage(40),
-                Constraint::Percentage(30),
-                Constraint::Percentage(10),
-                Constraint::Length(10),
-            ]
-            .as_ref(),
-        )
-        .split(left_chunk);
-
-    let metrics_text = vec![
-        Line::from(format!("CPU: [||||||  ] {}%", state.cpu_usage)),
-        Line::from(format!("RAM: [||||||||||] {}GB", state.ram_usage_gb)),
-        Line::from(""),
-        Line::from("NVIDIA API"),
-        Line::from(format!("Calls: {} / min", state.nvidia_calls_per_min)),
-        Line::from(""),
-        Line::from(format!("[Ollama: {}]", state.router_status)),
-    ];
-    let metrics_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" SYSTEM METRICS ");
-    let metrics = Paragraph::new(metrics_text).block(metrics_block);
-    f.render_widget(metrics, left_layout[0]);
-
-    let header_cells = ["PIPELINE", "STATUS"]
-        .iter()
-        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Blue)));
-    let header = Row::new(header_cells)
-        .style(Style::default().add_modifier(Modifier::BOLD))
-        .height(1);
-    let rows = state
-        .active_pipelines
-        .iter()
-        .map(|p| Row::new(vec![p.0.clone(), p.1.clone()]));
-    let table = Table::new(
-        rows,
-        [Constraint::Percentage(40), Constraint::Percentage(60)],
-    )
-    .header(header)
-    .block(Block::default().borders(Borders::ALL).title(" ACTIVE QUEUES "));
-    f.render_widget(table, left_layout[1]);
-
-    let state_text = vec![Line::from(state.system_state.clone())];
-    let state_block = Block::default().borders(Borders::ALL).title(" STATE ");
-    let state_widget = Paragraph::new(state_text).block(state_block);
-    f.render_widget(state_widget, left_layout[2]);
-
-    let aura_area = left_layout[3];
-
-    let aura_border = Block::default()
-        .borders(Borders::ALL)
-        .title(" AURA OS ")
-        .title_style(Style::default().add_modifier(Modifier::BOLD));
-    f.render_widget(aura_border, aura_area);
-
-    let aura_inner = ratatui::layout::Rect::new(
-        aura_area.x + 1,
-        aura_area.y + 1,
-        aura_area.right() - 1,
-        aura_area.bottom() - 1,
-    );
-
-    let aura_split = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(14), Constraint::Min(8)])
-        .split(aura_inner);
-
-    let info_text = vec![
-        Line::from("OS: Aura v1.0"),
-        Line::from("Host: Mac M4"),
-        Line::from("Kernel: "),
-        Line::from("Up: 00:00:04"),
-        Line::from("\u{2600}\u{fe0f} 72\u{00b0}F"),
-    ];
-    let info_widget = Paragraph::new(info_text).style(Style::default().fg(Color::White));
-    f.render_widget(info_widget, aura_split[0]);
-
-    let frame = ANIMATION_FRAMES[state.animation_frame];
-    let anim_lines: Vec<Line> = frame.lines().map(Line::from).collect();
-    let anim_widget = Paragraph::new(anim_lines).style(Style::default().fg(Color::Cyan));
-    f.render_widget(anim_widget, aura_split[1]);
-
-    let right_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(30), Constraint::Percentage(67), Constraint::Length(3)].as_ref())
-        .split(right_chunk);
-
-    let logs: Vec<Line> = state.logs.iter().map(|l| Line::from(l.as_str())).collect();
-    let log_view = Paragraph::new(logs)
-        .block(Block::default().borders(Borders::ALL).title(" LOG "));
-    f.render_widget(log_view, right_layout[0]);
-
-    let command_center = Paragraph::new("Command center".to_string())
-        .block(Block::default().borders(Borders::ALL).title(" COMMAND CENTER "));
-    f.render_widget(command_center, right_layout[1]);
-
-    let input = Paragraph::new(format!("> {}", state.input_buffer))
-        .style(Style::default().fg(Color::Yellow))
-        .block(Block::default().borders(Borders::ALL).title(" > "));
-    f.render_widget(input, right_layout[2]);
 }
