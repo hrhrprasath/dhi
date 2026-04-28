@@ -1,10 +1,10 @@
-mod aura;
-mod command;
-mod input;
-mod logs;
-mod metrics;
-mod pipelines;
-mod state;
+pub mod aura;
+pub mod command;
+pub mod input;
+pub mod logs;
+pub mod metrics;
+pub mod pipelines;
+pub mod state;
 
 use crate::AppState;
 use ratatui::{

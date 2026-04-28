@@ -11,13 +11,14 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io,
-    sync::Arc,
+    sync::{Arc, Mutex as StdMutex},
     time::{Duration, Instant},
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex as TokioMutex};
 
 use intent::{IntentRouter, ParsedIntent};
-use services::{OllamaService, SystemService};
+use services::{Logger, OllamaService, SystemService};
+use tui::components::logs::LogState;
 
 pub enum SystemEvent {
     Input(crossterm::event::KeyEvent),
@@ -46,12 +47,28 @@ pub struct AppState {
     pub animation_frame: usize,
     pub system_service: SystemService,
     pub ollama_service: OllamaService,
+    pub logger: Arc<Logger>,
+    pub log_state: Arc<StdMutex<LogState>>,
 }
 
+unsafe impl Send for AppState {}
+unsafe impl Sync for AppState {}
+
 impl AppState {
+    #[allow(dead_code)]
     fn new() -> Self {
+        Self::new_with_logger(
+            Arc::new(Logger::new()),
+            Arc::new(StdMutex::new(LogState::new())),
+        )
+    }
+
+    fn new_with_logger(logger: Arc<Logger>, log_state: Arc<StdMutex<LogState>>) -> Self {
         let system_service = SystemService::new();
         let metrics = system_service.get_metrics();
+
+        logger.info("SYSTEM", "Aura Harness v1.0 booting...");
+
         Self {
             should_quit: false,
             input_buffer: String::new(),
@@ -74,6 +91,8 @@ impl AppState {
             animation_frame: 0,
             system_service,
             ollama_service: OllamaService::new(),
+            logger,
+            log_state,
         }
     }
 }
@@ -87,8 +106,33 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let (tx, mut rx) = mpsc::channel::<SystemEvent>(100);
-    let app_state = Arc::new(Mutex::new(AppState::new()));
-    let router = Arc::new(Mutex::new(IntentRouter::new(None)));
+
+    let logger = Arc::new(Logger::new());
+    let log_state = Arc::new(StdMutex::new(LogState::new()));
+    let log_state_clone = log_state.clone();
+    let logger_clone = logger.clone();
+
+    tokio::spawn(async move {
+        let mut rx = logger_clone.subscribe();
+        loop {
+            match rx.recv().await {
+                Ok(entry) => {
+                    let mut log_state = log_state_clone.lock().unwrap();
+                    log_state.add_log(entry);
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    let _ = logger_clone.warn("LOGGER", format!("Missed {} logs", n));
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    break;
+                }
+            }
+        }
+    });
+
+    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(logger, log_state)));
+
+    let router = Arc::new(TokioMutex::new(IntentRouter::new(None)));
 
     let tick_rate = Duration::from_millis(250);
     let tx_input = tx.clone();
@@ -113,13 +157,17 @@ async fn main() -> Result<()> {
 
     let tx_health = tx.clone();
     let router_clone = router.clone();
+    let logger_for_health = app_state.lock().await.logger.clone();
     tokio::spawn(async move {
+        logger_for_health.info("ROUTER", "Checking Ollama connection...");
         let r = router_clone.lock().await;
         let online = r.health_check().await;
         drop(r);
         if online {
+            logger_for_health.info("ROUTER", "Ollama Intent Router ONLINE");
             let _ = tx_health.send(SystemEvent::RouterOnline).await;
         } else {
+            logger_for_health.warn("ROUTER", "Ollama not available at localhost:11434");
             let _ = tx_health
                 .send(SystemEvent::IntentError("Ollama not available at localhost:11434".to_string()))
                 .await;
@@ -211,6 +259,9 @@ async fn main() -> Result<()> {
                         state.router_status = "IDLE".to_string();
                     }
                     state.animation_frame = (state.animation_frame + 1) % 12;
+                    if state.animation_frame == 0 {
+                        state.logger.debug("TICK", "System tick");
+                    }
                 }
             }
         }

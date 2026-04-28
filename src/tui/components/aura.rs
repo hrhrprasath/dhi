@@ -35,10 +35,10 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
 
     let anim_text = match anim {
         // PHASE 1: THE INHALE (0-14) - Slow expansion from a single point
-        0..=2   => "        \n        \n        \n    •   \n        \n        \n        \n        ",
-        3..=5   => "        \n        \n        \n   ••   \n        \n        \n        \n        ",
-        6..=8   => "        \n        \n    •   \n   ••   \n        \n        \n        \n        ",
-        9..=11  => "        \n        \n    •   \n   •••  \n    •   \n        \n        \n        ",
+        0..=2 => "        \n        \n        \n    •   \n        \n        \n        \n        ",
+        3..=5 => "        \n        \n        \n   ••   \n        \n        \n        \n        ",
+        6..=8 => "        \n        \n    •   \n   ••   \n        \n        \n        \n        ",
+        9..=11 => "        \n        \n    •   \n   •••  \n    •   \n        \n        \n        ",
         12..=14 => "        \n    •   \n   • •  \n    •   \n        \n        \n        \n        ",
 
         // PHASE 2: RADIATING (15-29) - Reaching out to the corners
@@ -62,7 +62,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         54..=56 => "        \n        \n        \n    ••  \n        \n        \n        \n        ",
         57..=59 => "        \n        \n        \n    •   \n        \n        \n        \n        ",
 
-        _       => "        \n        \n        \n    •   \n        \n        \n        \n        ",
+        _ => "        \n        \n        \n    •   \n        \n        \n        \n        ",
     };
 
     let lines: Vec<Line> = anim_text
