@@ -7,21 +7,6 @@ use ratatui::{
     Frame,
 };
 
-const ANIMATION_FRAMES: &[&str; 12] = &[
-    "        \n        \n        \n    .   \n        \n        \n        \n        ",
-    "        \n        \n    ·   \n   ·.·  \n    ·   \n        \n        \n        ",
-    "        \n    .   \n   · ·  \n  · o · \n   · ·  \n    .   \n        \n        ",
-    "    ·   \n  ·   · \n ·     · \n·   o   ·\n ·     · \n  ·   · \n    ·   \n        ",
-    "   · ·  \n  · · · \n · ·o· · \n· ·o·o· ·\n · ·o· · \n  · · · \n   · ·  \n        ",
-    "  · · · \n · · · · \n· · o · ·\n· ·oOo· ·\n· · o · ·\n · · · · \n  · · · \n        ",
-    " ·  ·  · \n·  · ·  ·\n · · · · \n· · O · ·\n · · · · \n·  · ·  ·\n ·  ·  · \n        ",
-    "·   ·   ·\n ·  ·  · \n· · O · ·\n· O o O ·\n· · O · ·\n ·  ·  · \n·   ·   ·\n        ",
-    " ·  ·  · \n·  · ·  ·\n · · · · \n· · O · ·\n · · · · \n·  · ·  ·\n ·  ·  · \n        ",
-    "        \n  · · · \n · · · · \n · ·o· · \n · · · · \n  · · · \n        \n        ",
-    "        \n        \n   · ·  \n  · · · \n   · ·  \n        \n        \n        ",
-    "        \n        \n        \n    ·   \n        \n        \n        \n        ",
-];
-
 fn get_bar_color(value: u16) -> Color {
     if value < 50 {
         Color::Green
@@ -92,8 +77,4 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         .title(" SYSTEM METRICS ");
     let metrics = Paragraph::new(metrics_text).block(metrics_block);
     f.render_widget(metrics, area);
-}
-
-pub fn get_animation_frame(frame_idx: usize) -> &'static str {
-    ANIMATION_FRAMES[frame_idx % 12]
 }

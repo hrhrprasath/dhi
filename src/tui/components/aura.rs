@@ -7,8 +7,6 @@ use ratatui::{
     Frame,
 };
 
-use super::metrics::get_animation_frame;
-
 pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let aura_border = Block::default()
         .borders(Borders::ALL)
@@ -20,7 +18,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
 
     let aura_split = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(14), Constraint::Min(8)])
+        .constraints([Constraint::Length(14), Constraint::Min(10)])
         .split(aura_inner);
 
     let info_text = vec![
@@ -33,8 +31,60 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let info_widget = Paragraph::new(info_text).style(Style::default().fg(Color::White));
     f.render_widget(info_widget, aura_split[0]);
 
-    let frame = get_animation_frame(state.animation_frame);
-    let anim_lines: Vec<Line> = frame.lines().map(Line::from).collect();
-    let anim_widget = Paragraph::new(anim_lines).style(Style::default().fg(Color::Cyan));
+    let anim = state.animation_frame % 12;
+
+    let anim_text = match anim {
+        // PHASE 1: THE INHALE (0-14) - Slow expansion from a single point
+        0..=2   => "        \n        \n        \n    •   \n        \n        \n        \n        ",
+        3..=5   => "        \n        \n        \n   ••   \n        \n        \n        \n        ",
+        6..=8   => "        \n        \n    •   \n   ••   \n        \n        \n        \n        ",
+        9..=11  => "        \n        \n    •   \n   •••  \n    •   \n        \n        \n        ",
+        12..=14 => "        \n    •   \n   • •  \n    •   \n        \n        \n        \n        ",
+
+        // PHASE 2: RADIATING (15-29) - Reaching out to the corners
+        15..=17 => "    •   \n        \n  • • • \n    •   \n        \n        \n        \n        ",
+        18..=20 => "    •   \n  •   • \n    •   \n  •   • \n    •   \n        \n        \n        ",
+        21..=23 => "  •   • \n    •   \n •     •\n    •   \n •     •\n    •   \n  •   • \n        ",
+        24..=26 => " • • • •\n  • • • \n   • •  \n    •   \n   • •  \n  • • • \n • • • •\n        ",
+        27..=29 => "• • • • \n • • • •\n• • • • \n • • • •\n• • • • \n • • • •\n• • • • \n        ",
+
+        // PHASE 3: ACTIVE SYNTHESIS (30-44) - The "Jiggle" / High energy
+        30..=32 => " • • • •\n• • • • \n • • • •\n• • • • \n • • • •\n• • • • \n • • • •\n        ",
+        33..=35 => "• • • • \n • • • •\n• • • • \n • • • •\n• • • • \n • • • •\n• • • • \n        ",
+        36..=38 => "  • • • \n • • • •\n• • • • \n • • • •\n• • • • \n • • • •\n  • • • \n        ",
+        39..=41 => "   • •  \n  • • • \n • • • •\n• • • • \n • • • •\n  • • • \n   • •  \n        ",
+        42..=44 => "        \n   • •  \n  • • • \n • • • •\n  • • • \n   • •  \n        \n        ",
+
+        // PHASE 4: THE EXHALE (45-59) - Softening and returning to core
+        45..=47 => "        \n        \n   • •  \n  • • • \n   • •  \n        \n        \n        ",
+        48..=50 => "        \n        \n    •   \n   • •  \n    •   \n        \n        \n        ",
+        51..=53 => "        \n        \n        \n   • •  \n        \n        \n        \n        ",
+        54..=56 => "        \n        \n        \n    ••  \n        \n        \n        \n        ",
+        57..=59 => "        \n        \n        \n    •   \n        \n        \n        \n        ",
+
+        _       => "        \n        \n        \n    •   \n        \n        \n        \n        ",
+    };
+
+    let lines: Vec<Line> = anim_text
+        .lines()
+        .map(|l| {
+            let spans: Vec<ratatui::text::Span> = l
+                .chars()
+                .map(|c| {
+                    if c == '•' {
+                        ratatui::text::Span::styled(
+                            "•",
+                            Style::default().fg(Color::Rgb(255, 165, 0)),
+                        )
+                    } else {
+                        ratatui::text::Span::raw(" ")
+                    }
+                })
+                .collect();
+            Line::from(spans)
+        })
+        .collect();
+
+    let anim_widget = Paragraph::new(lines);
     f.render_widget(anim_widget, aura_split[1]);
 }
