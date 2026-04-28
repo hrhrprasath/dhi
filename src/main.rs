@@ -1,4 +1,5 @@
 mod intent;
+mod services;
 mod tui;
 
 use anyhow::Result;
@@ -16,6 +17,7 @@ use std::{
 use tokio::sync::{mpsc, Mutex};
 
 use intent::{IntentRouter, ParsedIntent};
+use services::{OllamaService, SystemService};
 
 pub enum SystemEvent {
     Input(crossterm::event::KeyEvent),
@@ -33,6 +35,7 @@ pub struct AppState {
     pub logs: Vec<String>,
     pub cpu_usage: u16,
     pub ram_usage_gb: u16,
+    pub ram_total_gb: u16,
     pub nvidia_calls_per_min: u16,
     pub active_pipelines: Vec<(String, String)>,
     pub router_online: bool,
@@ -41,16 +44,21 @@ pub struct AppState {
     pub system_state: String,
     pub nvidia_api_status: String,
     pub animation_frame: usize,
+    pub system_service: SystemService,
+    pub ollama_service: OllamaService,
 }
 
 impl AppState {
     fn new() -> Self {
+        let system_service = SystemService::new();
+        let metrics = system_service.get_metrics();
         Self {
             should_quit: false,
             input_buffer: String::new(),
             logs: vec!["[SYSTEM] Booting Aura Harness v1.0...".to_string()],
-            cpu_usage: 24,
-            ram_usage_gb: 12,
+            cpu_usage: metrics.cpu_usage,
+            ram_usage_gb: metrics.ram_used_gb,
+            ram_total_gb: metrics.ram_total_gb,
             nvidia_calls_per_min: 12,
             active_pipelines: vec![
                 ("RSS".to_string(), "Sleeping".to_string()),
@@ -64,6 +72,8 @@ impl AppState {
             system_state: "SYNTHESIZING".to_string(),
             nvidia_api_status: "Online".to_string(),
             animation_frame: 0,
+            system_service,
+            ollama_service: OllamaService::new(),
         }
     }
 }
@@ -193,6 +203,10 @@ async fn main() -> Result<()> {
                         .push("[ROUTER] Ollama Intent Router ONLINE".to_string());
                 }
                 SystemEvent::Tick => {
+                    state.system_service.refresh();
+                    let metrics = state.system_service.get_metrics();
+                    state.cpu_usage = metrics.cpu_usage;
+                    state.ram_usage_gb = metrics.ram_used_gb;
                     if state.router_status == "PROCESSING" {
                         state.router_status = "IDLE".to_string();
                     }
