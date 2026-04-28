@@ -1,0 +1,10 @@
+[package]
+name = "aura_harness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.36", features = ["full"] }
+ratatui = "0.26"
+crossterm = "0.27"
+anyhow = "1.0"
