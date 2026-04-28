@@ -1,0 +1,28 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ AURA OS HARNESS :: SYSTEM NOMINAL                         [Ollama: IDLE]    │
+├────────────────────────┬──────────────────────┬──────────────────────────────┤
+│ SYSTEM METRICS        │ LOG                   │ Command center               │
+│ ──────────────────    │ ──────────────────     │ ─────────────────────────     │
+│ CPU: [||||||    ] 24%│ [SYSTEM]: Routing...  │ > Aura, check Apple stock...   │
+│ RAM: [||||||||||]12GB│ [INTENT]: {...AAPL}   │                              │
+│                      │ [PIPELINE]: Fetch... │ Aura: Apple is currently     │
+│ NVIDIA API            │ [NVIDIA]: Synthes...  │ down 2%. The drop            │
+│ Calls: 12 / min       │                      │ correlates with a new       │
+│                      │                      │ supply chain report         │
+│ ──────────────────    │                      │                              │
+│ ACTIVE QUEUES         │                      ├──────────────────────────────┤
+│ [RSS]      : Sleeping│                      │ > _ (input)                  │
+│ [Portfolio]: Executing│                      │                              │
+│ [Search]   : Idle    │                      │                              │
+│ [Health]   : Idle    │                      │                              │
+│                      │                      │                              │
+│ [STATE]             │                      │                              │
+│ SYNTHESIZING     ●    │                      │                              │
+│ (animation)         │                      │                              │
+└────────────────────────┴──────────────────────┴──────────────────────────────┘
+        25%                 25%                      50%
+
+Layout: 3-Column
+- Left (25%): SYSTEM METRICS + ACTIVE QUEUES + STATE (with animation)
+- Middle (25%): LOG (scrolling event log)
+- Right (50%): COMMAND CENTER (LLM output + user input at bottom)

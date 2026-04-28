@@ -1,0 +1,27 @@
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ AURA OS HARNESS :: Mac Mini (M4)          [Router: Qwen 🟢]   │
+├────────────────────┬─────────────────────┬─────────────────────┤
+│ SYSTEM METRICS     │ SYSTEM LOGS          │ COMMAND CENTER       │
+│ ─────────────     │ ─────────────────    │ ──────────────────   │
+│ CPU [|||||.] 20%  │ > check AAPL         │                     │
+│ RAM [||||||] 10GB │ [ROUTER] Intent      │                     │
+│                   │ > Portfolio | AAPL   │                     │
+│ NVIDIA NIM        │ [NVIDIA] Synth...   │                     │
+│ 12 calls/min      │                     │ Apple trading at    │
+│ 4,500 tokens     │ ───────── ─────────  │ $172.50 (-2.1%)     │
+│                   │                     │                     │
+│ ─────────────     │ pipeline events:     │ News Summary:       │
+│ PIPELINES        │ [+] Portfolio: RUN    │ • Supply concerns   │
+│ [+] Portfolio   │ [~] RSS: SLEEP       │ • Product delay    │
+│ [~] RSS Scrape  │ [ ] Health: IDLE     │ • Analyst HOLD    │
+│ [ ] Health      │                     │                    │
+├────────────────────┴─────────────────────┴─────────────────────┤
+│ > check AAPL news_                                                      │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+Layout: 3-Column
+├── Left (25%):  System Metrics + Pipeline List  
+├── Middle (35%): System Logs (event history)
+└── Right (40%):  Command Center (AI responses, summaries)
+
+Input bar spans full width at bottom
