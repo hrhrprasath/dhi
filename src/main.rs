@@ -18,6 +18,7 @@ use tokio::sync::{broadcast, mpsc, Mutex as TokioMutex};
 
 use intent::{IntentRouter, ParsedIntent};
 use services::{Logger, OllamaService, SystemService};
+use tui::components::command::{CommandState, FocusPanel};
 use tui::components::logs::LogState;
 
 pub enum SystemEvent {
@@ -49,6 +50,8 @@ pub struct AppState {
     pub ollama_service: OllamaService,
     pub logger: Arc<Logger>,
     pub log_state: Arc<StdMutex<LogState>>,
+    pub cmd_state: Arc<StdMutex<CommandState>>,
+    pub focused_panel: FocusPanel,
 }
 
 unsafe impl Send for AppState {}
@@ -60,10 +63,15 @@ impl AppState {
         Self::new_with_logger(
             Arc::new(Logger::new()),
             Arc::new(StdMutex::new(LogState::new())),
+            Arc::new(StdMutex::new(CommandState::new())),
         )
     }
 
-    fn new_with_logger(logger: Arc<Logger>, log_state: Arc<StdMutex<LogState>>) -> Self {
+    fn new_with_logger(
+        logger: Arc<Logger>,
+        log_state: Arc<StdMutex<LogState>>,
+        cmd_state: Arc<StdMutex<CommandState>>,
+    ) -> Self {
         let system_service = SystemService::new();
         let metrics = system_service.get_metrics();
 
@@ -93,6 +101,8 @@ impl AppState {
             ollama_service: OllamaService::new(),
             logger,
             log_state,
+            cmd_state,
+            focused_panel: FocusPanel::Logs,
         }
     }
 }
@@ -109,6 +119,7 @@ async fn main() -> Result<()> {
 
     let logger = Arc::new(Logger::new());
     let log_state = Arc::new(StdMutex::new(LogState::new()));
+    let cmd_state = Arc::new(StdMutex::new(CommandState::new()));
     let log_state_clone = log_state.clone();
     let logger_clone = logger.clone();
 
@@ -130,7 +141,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(logger, log_state)));
+    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(logger, log_state, cmd_state)));
 
     let router = Arc::new(TokioMutex::new(IntentRouter::new(None)));
 
@@ -192,6 +203,39 @@ async fn main() -> Result<()> {
                     KeyCode::Char('c') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
                         state.should_quit = true;
                     }
+                    KeyCode::Tab => {
+                        state.focused_panel = match state.focused_panel {
+                            FocusPanel::Logs => FocusPanel::Command,
+                            FocusPanel::Command => FocusPanel::Logs,
+                        };
+                    }
+                    KeyCode::Up => {
+                        match state.focused_panel {
+                            FocusPanel::Logs => {
+                                let mut log_state = state.log_state.lock().unwrap();
+                                log_state.scroll = log_state.scroll.saturating_sub(1);
+                            }
+                            FocusPanel::Command => {
+                                let mut cmd_state = state.cmd_state.lock().unwrap();
+                                cmd_state.scroll = cmd_state.scroll.saturating_sub(1);
+                            }
+                        }
+                    }
+                    KeyCode::Down => {
+                        let visible_lines = 10;
+                        match state.focused_panel {
+                            FocusPanel::Logs => {
+                                let mut log_state = state.log_state.lock().unwrap();
+                                let max_scroll = log_state.logs.len().saturating_sub(visible_lines) as u16;
+                                log_state.scroll = (log_state.scroll + 1).min(max_scroll);
+                            }
+                            FocusPanel::Command => {
+                                let mut cmd_state = state.cmd_state.lock().unwrap();
+                                let max_scroll = cmd_state.commands.len().saturating_sub(visible_lines) as u16;
+                                cmd_state.scroll = (cmd_state.scroll + 1).min(max_scroll);
+                            }
+                        }
+                    }
                     KeyCode::Char(c) => state.input_buffer.push(c),
                     KeyCode::Backspace => {
                         state.input_buffer.pop();
@@ -199,6 +243,7 @@ async fn main() -> Result<()> {
                     KeyCode::Enter => {
                         let cmd = state.input_buffer.clone();
                         state.logs.push(format!("> {}", cmd));
+                        state.cmd_state.lock().unwrap().add_command(cmd.clone());
                         state.input_buffer.clear();
                         if cmd == "quit" || cmd == "exit" {
                             state.should_quit = true;

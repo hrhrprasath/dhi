@@ -1,19 +1,20 @@
+use crate::tui::palette::Palette;
 use crate::AppState;
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
 
-fn get_bar_color(value: u16) -> Color {
+fn get_bar_color(value: u16) -> ratatui::style::Color {
     if value < 50 {
-        Color::Green
+        Palette::SUCCESS
     } else if value < 80 {
-        Color::Yellow
+        Palette::WARNING
     } else {
-        Color::Red
+        Palette::ERROR
     }
 }
 
@@ -28,13 +29,13 @@ fn make_bar(value: u16, total: u16) -> String {
     format!("{}{:empty$} {}%", "█".repeat(filled), "", percent)
 }
 
-fn get_status_indicator(online: bool, processing: bool) -> (String, Color) {
+fn get_status_indicator(online: bool, processing: bool) -> (String, ratatui::style::Color) {
     if processing {
-        ("●".to_string(), Color::Yellow)
+        ("●".to_string(), Palette::WARNING)
     } else if online {
-        ("●".to_string(), Color::Green)
+        ("●".to_string(), Palette::SUCCESS)
     } else {
-        ("○".to_string(), Color::Gray)
+        ("●".to_string(), Palette::ERROR)
     }
 }
 
@@ -68,7 +69,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("○", Style::default().fg(Color::DarkGray)),
+            Span::styled("○", Style::default().fg(Palette::INACTIVE)),
             Span::raw(" NVIDIA Coming Soon"),
         ]),
     ];

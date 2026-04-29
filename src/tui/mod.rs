@@ -1,4 +1,5 @@
 pub mod components;
+pub mod palette;
 
 use crate::AppState;
 use ratatui::Frame;

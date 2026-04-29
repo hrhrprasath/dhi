@@ -59,7 +59,8 @@ pub fn render(f: &mut Frame, state: &AppState) {
         )
         .split(right_chunk);
 
-    logs::render(f, state, right_layout[0]);
-    command::render(f, state, right_layout[1]);
+    let focused = state.focused_panel;
+    logs::render(f, state, right_layout[0], focused);
+    command::render(f, state, right_layout[1], focused);
     input::render(f, state, right_layout[2]);
 }
