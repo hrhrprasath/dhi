@@ -8,10 +8,23 @@ use ratatui::{
     Frame,
 };
 
+fn format_uptime(secs: u64) -> String {
+    let days = secs / 86400;
+    let hours = (secs % 86400) / 3600;
+    let mins = (secs % 3600) / 60;
+    if days > 0 {
+        format!("{}d {}h", days, hours)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins)
+    }
+}
+
 pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     let aura_border = Block::default()
         .borders(Borders::ALL)
-        .title(" AURA OS ")
+        .title(" DHI OS ")
         .title_style(Style::default().add_modifier(Modifier::BOLD));
     f.render_widget(aura_border, area);
 
@@ -22,12 +35,13 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         .constraints([Constraint::Length(14), Constraint::Min(10)])
         .split(aura_inner);
 
+    let uptime_str = format_uptime(state.system_uptime);
     let info_text = vec![
-        Line::from("OS: Aura v1.0"),
-        Line::from("Host: Mac M4"),
-        Line::from("Kernel: "),
-        Line::from("Up: 00:00:04"),
-        Line::from("\u{2600}\u{fe0f} 72\u{00b0}F"),
+        Line::from(format!("OS: DHI v{}", env!("CARGO_PKG_VERSION"))),
+        Line::from(format!("Host: {}", state.system_hostname)),
+        Line::from(format!("Kernel: {}", state.system_kernel)),
+        Line::from(format!("Up: {}", uptime_str)),
+        Line::from(state.weather_info.clone()),
     ];
     let info_widget = Paragraph::new(info_text).style(Style::default().fg(Palette::TEXT));
     f.render_widget(info_widget, aura_split[0]);
@@ -75,7 +89,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
         2 => "        \n        \n    •   \n   ••   \n    •   \n        \n        \n        ",
         3 => "        \n    •   \n        \n  • • • \n        \n    •   \n        \n        ",
 
-        // 4-5: Peak "Aura" (Maximum Spread)
+        // 4-5: Peak "DHI" (Maximum Spread)
         4 => "    •   \n        \n •     •\n    •   \n •     •\n        \n    •   \n        ",
         5 => "  • • • \n •     •\n•  • •  \n • • • •\n•  • •  \n •     •\n  • • • \n        ",
 

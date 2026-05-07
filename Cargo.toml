@@ -1,5 +1,5 @@
 [package]
-name = "aura_harness"
+name = "dhi_harness"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,4 +12,6 @@ reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sysinfo = "0.31"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4"] }
+serde_yaml = "0.9"

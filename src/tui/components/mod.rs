@@ -1,4 +1,4 @@
-pub mod aura;
+pub mod dhi;
 pub mod command;
 pub mod input;
 pub mod logs;
@@ -34,8 +34,8 @@ pub fn render(f: &mut Frame, state: &AppState) {
         .constraints(
             [
                 Constraint::Percentage(40),
-                Constraint::Percentage(30),
                 Constraint::Percentage(10),
+                Constraint::Percentage(30),
                 Constraint::Length(10),
             ]
             .as_ref(),
@@ -43,9 +43,9 @@ pub fn render(f: &mut Frame, state: &AppState) {
         .split(left_chunk);
 
     metrics::render(f, state, left_layout[0]);
-    pipelines::render(f, state, left_layout[1]);
-    state::render(f, state, left_layout[2]);
-    aura::render(f, state, left_layout[3]);
+    state::render(f, state, left_layout[1]);
+    pipelines::render(f, state, left_layout[2]);
+    dhi::render(f, state, left_layout[3]);
 
     let right_layout = Layout::default()
         .direction(Direction::Vertical)

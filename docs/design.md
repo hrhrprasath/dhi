@@ -1,8 +1,8 @@
-# Aura OS: Terminal-Based Deterministic Harness Design Document
+# DHI OS: Terminal-Based Deterministic Harness Design Document
 
 ## 1. High-Level Architecture Overview
 
-Aura is a lightweight, high-performance, command-line AI operating system designed to run natively on Apple Silicon (Mac Mini M4, 16GB Unified Memory). The system abandons fragile "autonomous AI agents" and heavy web-based frontends in favor of an **Event-Driven Deterministic Harness** wrapped in a blazingly fast Terminal UI (TUI).
+DHI is a lightweight, high-performance, command-line AI operating system designed to run natively on Apple Silicon (Mac Mini M4, 16GB Unified Memory). The system abandons fragile "autonomous AI agents" and heavy web-based frontends in favor of an **Event-Driven Deterministic Harness** wrapped in a blazingly fast Terminal UI (TUI).
 
 It utilizes the **"Cognitive Sandwich"** pattern: AI is strictly used at the boundaries (translating human input to JSON, and raw data to human summaries), while the core execution is handled by 100% pure, predictable Rust code.
 
@@ -88,7 +88,7 @@ The user interface operates inside the terminal (e.g., an iTerm2 drop-down visor
 ### 3.1 Boot Sequence (`neofetch` Style)
 Displayed for 2 seconds upon binary execution to verify system integrity before loading the main dashboard.
 ```text
-       /\          OS: Aura Harness v1.0
+       /\          OS: DHI Harness v1.0
       /  \         Host: Mac Mini (M4) / 16GB Unified
      /____\        Kernel: Rust + tokio (v1.36)
     /      \       Uptime: 0 days, 00:00:04
@@ -101,7 +101,7 @@ Displayed for 2 seconds upon binary execution to verify system integrity before 
 A fully reactive dashboard. The UI thread runs independently of the `tokio` background workers, ensuring zero terminal freezing during execution.
 
 ```text
-[1] Main  [2] Pipelines  [3] Network  [4] Logs                    [ Aura OS ]
+[1] Main  [2] Pipelines  [3] Network  [4] Logs                    [ DHI OS ]
 
 CPU [||||||||..........]  32%  |  ROUTER [Qwen 1.5B]   : IDLE
 RAM [|||||||||||||.....]  12G  |  SYNTH  [NVIDIA NIM]  : 0 tk/s
@@ -125,13 +125,13 @@ NAME           STATUS       LAST EVENT                LATENCY   CPU%   MEM
 
 ## 4. The Cognitive Sandwich Architecture (Low-Level)
 
-Aura relies on multi-threaded `tokio::mpsc` channels. There are zero LLM "tool calls." AI only translates state.
+DHI relies on multi-threaded `tokio::mpsc` channels. There are zero LLM "tool calls." AI only translates state.
 
 ### Stage 1: The Top Bread (Intent & Extraction)
 1. **User Input:** Raw text is captured via the TUI command bar.
 2. **Classification:** Text is piped to the Local 1B model. 
 3. **JSON Handoff:** The model translates human intent into strict JSON (e.g., `{"event": "EXECUTE_PORTFOLIO_CHECK", "target": "NIFTY_50"}`) and immediately unloads.
-4. **Dispatch:** Aura Core routes the JSON to the target Pipeline's Input Queue.
+4. **Dispatch:** DHI Core routes the JSON to the target Pipeline's Input Queue.
 
 ### Stage 2: The Meat (Deterministic Execution)
 1. **Pure Code Trigger:** The Rust pipeline sees the event.
@@ -140,7 +140,7 @@ Aura relies on multi-threaded `tokio::mpsc` channels. There are zero LLM "tool c
 4. **Output Queue:** The raw data is pushed to the pipeline's Output Queue.
 
 ### Stage 3: The Bottom Bread (Synthesis & Formatting)
-1. **Routing:** Aura Core detects raw data in an Output Queue.
+1. **Routing:** DHI Core detects raw data in an Output Queue.
 2. **Synthesis:** Pushed to NVIDIA NIM API (or Local LLM for small payloads) to convert raw data into a human-readable summary.
 3. **Response:** The summary is printed to the TUI log buffer and spoken via TTS.
 
@@ -168,9 +168,80 @@ These are strict, hardcoded state machines running as background `tokio` tasks.
 
 ---
 
-## 6. Implementation Strategy
+## 6. CQRS Queue Architecture
+
+DHI uses a **file-based persistent queue system** for crash recovery and continuity. Both Input and Output queues are stored as JSON files.
+
+### 6.1 Input Queue (In-Memory)
+
+- **Purpose:** Stores pending user commands before processing (in-memory, JSON persistence TBD)
+- **Format:** In-memory vector of command objects
+
+### 6.2 Output Queue
+
+- **Location:** `./data/queue/output.json`
+- **Purpose:** Stores pipeline execution results for display and persistence
+- **Format:** Array of result objects
+
+```json
+[
+  {
+    "id": "uuid",
+    "pipeline": "portfolio",
+    "timestamp": "2026-05-07T10:30:05Z",
+    "summary": "AAPL is down 2%...",
+    "status": "success|error"
+  }
+]
+```
+
+### 6.3 Data Persistence (Markdown)
+
+Pipeline results are also persisted as markdown files for history and search:
+
+- **Path:** `./data/<pipeline>/<timestamp>.md`
+- **Example:** `./data/portfolio/2026-05-07T10-30-05.md`
+
+### 6.4 Queue Flow
+
+```
+                                    ┌─────────────────────┐
+                                    │      Pre-flight     │
+                                    │ (scheduled + retry) │
+                                    └──────────┬──────────┘
+                                               ↓
+User Input → Intent Router → Input Queue → Pipeline → Output Queue
+                                                         ↓
+                             Command Center ←────────────┘
+                                    ↓
+                    ./data/<pipeline>/<timestamp>.md
+```
+
+**Pre-flight** runs on startup and periodically:
+1. Check scheduled activities (cron-style intervals)
+2. Scan Input Queue for items with `status != completed` (failed/interrupted)
+3. Re-queue pending items back to Input Queue for reprocessing
+
+### 6.5 Input Queue Item Schema
+
+```json
+{
+  "id": "uuid",
+  "timestamp": "2026-05-07T10:30:00Z",
+  "source": "user|preflight",
+  "raw_input": "check Apple stock",
+  "intent": {"pipeline": "portfolio", "action": "check"},
+  "status": "pending|processing|completed|failed",
+  "retry_count": 0
+}
+```
+
+---
+
+## 7. Implementation Strategy
 
 * **Phase 1: TUI & Boilerplate:** Build the `ratatui` UI loop, the `crossterm` input handler, and the `tokio::mpsc` message bus. Establish the split-pane dashboard.
 * **Phase 2: Intent Layer:** Integrate the local Ollama REST call to route terminal inputs into strict JSON outputs.
 * **Phase 3: Core Pipelines:** Build the pure-Rust API integrations (starting with Pipeline 6 for system metrics and Pipeline 3 for Portfolio).
 * **Phase 4: Synthesis Layer:** Wire the Pipeline Output Queues to the NVIDIA NIM API for final summarization formatting.
+* **Phase 5: Queue System:** Implement file-based Input/Output queues with crash recovery.

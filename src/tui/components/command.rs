@@ -55,6 +55,7 @@ impl Default for CommandState {
 
 pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) {
     let mut cmd_state = state.cmd_state.lock().unwrap();
+    let output_history = state.output_history.lock().unwrap();
 
     let is_focused = focused == FocusPanel::Command;
     let focus_style = if is_focused {
@@ -63,8 +64,38 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) 
         Style::default().fg(Palette::BORDER_UNFOCUSED)
     };
 
-    if cmd_state.commands.is_empty() {
-        let empty = Paragraph::new("No commands yet...").block(
+    let mut all_lines: Vec<Line> = Vec::new();
+
+    for output in output_history.iter().rev().take(20) {
+        all_lines.push(Line::from(vec![
+            Span::styled(
+                format!("[{}]", &output.pipeline[..1].to_uppercase()),
+                Style::default().fg(Palette::TEXT_ACCENT),
+            ),
+            Span::styled(" ", Style::default()),
+            Span::styled(&output.summary, Style::default().fg(Palette::TEXT_DIM)),
+        ]));
+    }
+
+    if !cmd_state.commands.is_empty() {
+        all_lines.push(Line::from(Span::styled(
+            "───────────────────── Commands ────────────────────",
+            Style::default().fg(Palette::TEXT_DIM),
+        )));
+
+        for (i, cmd) in cmd_state.commands.iter().enumerate().rev().take(10) {
+            all_lines.push(Line::from(vec![
+                Span::styled(
+                    format!("{:>4}> ", i + 1),
+                    Style::default().fg(Palette::TEXT_ACCENT),
+                ),
+                Span::styled(cmd.clone(), Style::default().fg(Palette::TEXT_DIM)),
+            ]));
+        }
+    }
+
+    if all_lines.is_empty() {
+        let empty = Paragraph::new("No commands or outputs yet...").block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(focus_style)
@@ -76,28 +107,17 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) 
 
     let visible_lines = area.height as usize - 2;
     if is_focused {
-        cmd_state.auto_scroll(visible_lines);
+        if all_lines.len() > visible_lines {
+            cmd_state.scroll = (all_lines.len() - visible_lines) as u16;
+        } else {
+            cmd_state.scroll = 0;
+        }
     }
 
-    let content_len = cmd_state.commands.len();
+    let content_len = all_lines.len();
     let scroll_offset = cmd_state.scroll;
 
-    let lines: Vec<Line> = cmd_state
-        .commands
-        .iter()
-        .enumerate()
-        .map(|(i, cmd)| {
-            Line::from(vec![
-                Span::styled(
-                    format!("{:>4}> ", i + 1),
-                    Style::default().fg(Palette::TEXT_ACCENT),
-                ),
-                Span::styled(cmd.clone(), Style::default().fg(Palette::TEXT_DIM)),
-            ])
-        })
-        .collect();
-
-    let command_view = Paragraph::new(lines)
+    let command_view = Paragraph::new(all_lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)

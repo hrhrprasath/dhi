@@ -1,5 +1,9 @@
 mod intent;
+mod pipeline;
+mod prompt;
+mod queue;
 mod services;
+mod summarizer;
 mod tui;
 
 use anyhow::Result;
@@ -17,6 +21,8 @@ use std::{
 use tokio::sync::{broadcast, mpsc, Mutex as TokioMutex};
 
 use intent::{IntentRouter, ParsedIntent};
+use pipeline::PipelineExecutor;
+use queue::{OutputQueueItem, QueueManager};
 use services::{Logger, OllamaService, SystemService};
 use tui::components::command::{CommandState, FocusPanel};
 use tui::components::logs::LogState;
@@ -52,6 +58,15 @@ pub struct AppState {
     pub log_state: Arc<StdMutex<LogState>>,
     pub cmd_state: Arc<StdMutex<CommandState>>,
     pub focused_panel: FocusPanel,
+    pub queue_manager: Arc<TokioMutex<QueueManager>>,
+    pub output_history: Arc<StdMutex<Vec<OutputQueueItem>>>,
+    pub input_queue_count: usize,
+    pub output_queue_count: usize,
+    pub system_uptime: u64,
+    pub system_hostname: String,
+    pub system_kernel: String,
+    pub weather_info: String,
+    pub pipeline_executor: PipelineExecutor,
 }
 
 unsafe impl Send for AppState {}
@@ -75,12 +90,16 @@ impl AppState {
         let system_service = SystemService::new();
         let metrics = system_service.get_metrics();
 
-        logger.info("SYSTEM", "Aura Harness v1.0 booting...");
+        let queue_manager = QueueManager::new().unwrap_or_default();
+        
+        let output_history = queue_manager.get_recent_outputs(50);
+        logger.info("SYSTEM", &format!("Loaded {} outputs from queue", output_history.len()));
+        logger.info("SYSTEM", &format!("DHI Harness v{} booting...", env!("CARGO_PKG_VERSION")));
 
         Self {
             should_quit: false,
             input_buffer: String::new(),
-            logs: vec!["[SYSTEM] Booting Aura Harness v1.0...".to_string()],
+            logs: vec![format!("[SYSTEM] Booting DHI Harness v{}...", env!("CARGO_PKG_VERSION"))],
             cpu_usage: metrics.cpu_usage,
             ram_usage_gb: metrics.ram_used_gb,
             ram_total_gb: metrics.ram_total_gb,
@@ -103,6 +122,15 @@ impl AppState {
             log_state,
             cmd_state,
             focused_panel: FocusPanel::Logs,
+            queue_manager: Arc::new(TokioMutex::new(queue_manager)),
+            output_history: Arc::new(StdMutex::new(output_history.clone())),
+            input_queue_count: 0,
+            output_queue_count: output_history.len(),
+            system_uptime: metrics.uptime_secs,
+            system_hostname: metrics.hostname.clone(),
+            system_kernel: metrics.kernel.clone(),
+            weather_info: metrics.weather,
+            pipeline_executor: PipelineExecutor::new(Some("config/pipelines.yaml")),
         }
     }
 }
@@ -280,6 +308,30 @@ async fn main() -> Result<()> {
                         .push(format!("[ROUTER] Intent -> {} | {}", intent.target, intent.event));
                     state.router_online = true;
                     state.router_status = "PROCESSING".to_string();
+                    
+                    let executor = state.pipeline_executor.clone();
+                    let target = intent.target.clone();
+                    let event = intent.event.clone();
+                    let qm = state.queue_manager.clone();
+                    tokio::spawn(async move {
+                        let result = executor.find_and_execute(&format!("{} {}", target, event), &event);
+                        match result {
+                            Ok(summary) => {
+                                let output = OutputQueueItem::new(
+                                    target.clone(),
+                                    "input_id".to_string(),
+                                    summary.clone(),
+                                    summary,
+                                );
+                                if let Ok(qm) = qm.try_lock() {
+                                    let _ = qm.enqueue_output(output);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Pipeline execution failed: {}", e);
+                            }
+                        }
+                    });
                 }
                 SystemEvent::IntentError(err) => {
                     state
@@ -300,13 +352,23 @@ async fn main() -> Result<()> {
                     let metrics = state.system_service.get_metrics();
                     state.cpu_usage = metrics.cpu_usage;
                     state.ram_usage_gb = metrics.ram_used_gb;
+                    state.system_uptime = metrics.uptime_secs;
+                    state.system_hostname = metrics.hostname;
+                    state.system_kernel = metrics.kernel;
+                    state.weather_info = metrics.weather;
                     if state.router_status == "PROCESSING" {
                         state.router_status = "IDLE".to_string();
                     }
                     state.animation_frame = (state.animation_frame + 1) % 12;
-                    if state.animation_frame == 0 {
-                        state.logger.debug("TICK", "System tick");
-                    }
+                    let (in_count, out_count) = {
+                        if let Ok(qm) = state.queue_manager.try_lock() {
+                            (qm.input_queue_len(), qm.output_queue_len())
+                        } else {
+                            (0, 0)
+                        }
+                    };
+                    state.input_queue_count = in_count;
+                    state.output_queue_count = out_count;
                 }
             }
         }

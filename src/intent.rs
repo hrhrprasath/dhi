@@ -1,3 +1,4 @@
+use crate::prompt::intent_prompt;
 use anyhow::{Result, anyhow};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -32,27 +33,19 @@ pub struct ParsedIntent {
 pub struct IntentRouter {
     client: Client,
     model: String,
-    system_prompt: String,
 }
 
 impl IntentRouter {
     pub fn new(model: Option<String>) -> Self {
         let model = model.unwrap_or_else(|| DEFAULT_MODEL.to_string());
-        let system_prompt = r#"You are an intent router. Convert user input to strict JSON.
-Output ONLY valid JSON, no explanations.
-Example: {"event": "EXECUTE_PORTFOLIO_CHECK", "target": "NIFTY_50"}
-Available events: EXECUTE_PORTFOLIO_CHECK, EXECUTE_RSS_FETCH, EXECUTE_MAIL_CHECK, 
-EXECUTE_HEALTH_LOG, EXECUTE_DEEP_SEARCH, EXECUTE_SYSTEM_STATUS, QUIT_APP"#;
-
         Self {
             client: Client::new(),
             model,
-            system_prompt: system_prompt.to_string(),
         }
     }
 
     pub async fn route(&self, user_input: &str) -> Result<ParsedIntent> {
-        let prompt = format!("{}\n\nUser: {}", self.system_prompt, user_input);
+        let prompt = intent_prompt(user_input);
 
         let request = IntentRequest {
             model: self.model.clone(),

@@ -28,7 +28,7 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" ACTIVE QUEUES "),
+            .title(" PIPELINE STATUS "),
     );
     f.render_widget(table, area);
 }

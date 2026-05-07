@@ -61,7 +61,7 @@ pub struct Logger {
 impl Logger {
     pub fn new() -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let log_dir = PathBuf::from(home).join(".aura").join("log");
+        let log_dir = PathBuf::from(home).join(".dhi").join("log");
 
         if let Err(e) = fs::create_dir_all(&log_dir) {
             eprintln!("Failed to create log directory: {}", e);

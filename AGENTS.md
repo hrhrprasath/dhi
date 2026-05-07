@@ -1,10 +1,10 @@
-# AGENTS.md - Aura Harness Development Guide
+# AGENTS.md - DHI Harness Development Guide
 
-This file provides guidance for AI agents working on the Aura Harness codebase.
+This file provides guidance for AI agents working on the DHI Harness codebase.
 
 ## 1. Project Overview
 
-- **Name:** aura_harness
+- **Name:** dhi_harness
 - **Language:** Rust (2021 edition)
 - **Type:** Terminal UI (TUI) using ratatui + crossterm
 - **Runtime:** tokio async runtime
@@ -12,7 +12,7 @@ This file provides guidance for AI agents working on the Aura Harness codebase.
 
 ### Background & Architecture
 
-Aura is a Terminal AI OS inspired by Her (movie), Batman AI, and Jarvis/Ironman. It uses the **Cognitive Sandwich** pattern:
+DHI is a Terminal AI OS inspired by Her (movie), Batman AI, and Jarvis/Ironman. It uses the **Cognitive Sandwich** pattern:
 - **Top Bread (Intent):** Local 1B/3B model (Qwen via Ollama) translates human input → strict JSON
 - **Meat (Execution):** Pure Rust pipelines (event-driven, zero AI tool calls) hit APIs/scrapers
 - **Bottom Bread (Synthesis):** NVIDIA NIM API (Llama 405B) converts raw data → human summary
