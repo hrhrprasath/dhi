@@ -35,6 +35,7 @@ pub enum SystemEvent {
     IntentResult { intent: ParsedIntent },
     IntentError(String),
     RouterOnline,
+    RouterOffline,
 }
 
 pub struct AppState {
@@ -67,6 +68,7 @@ pub struct AppState {
     pub system_kernel: String,
     pub weather_info: String,
     pub pipeline_executor: PipelineExecutor,
+    pub last_ollama_check: u64,
 }
 
 unsafe impl Send for AppState {}
@@ -96,10 +98,17 @@ impl AppState {
         logger.info("SYSTEM", &format!("Loaded {} outputs from queue", output_history.len()));
         logger.info("SYSTEM", &format!("DHI Harness v{} booting...", env!("CARGO_PKG_VERSION")));
 
+        let pipeline_executor = PipelineExecutor::new(Some("config/pipelines.yaml"));
+        let pipelines = pipeline_executor.list_pipelines();
+        logger.info("SYSTEM", &format!("Loaded {} pipelines: {:?}", pipelines.len(), pipelines.iter().map(|(n,_)| n).collect::<Vec<_>>()));
+
         Self {
             should_quit: false,
             input_buffer: String::new(),
-            logs: vec![format!("[SYSTEM] Booting DHI Harness v{}...", env!("CARGO_PKG_VERSION"))],
+            logs: vec![
+                format!("[SYSTEM] Booting DHI Harness v{}...", env!("CARGO_PKG_VERSION")),
+                format!("[SYSTEM] Loaded {} pipelines", pipelines.len()),
+            ],
             cpu_usage: metrics.cpu_usage,
             ram_usage_gb: metrics.ram_used_gb,
             ram_total_gb: metrics.ram_total_gb,
@@ -130,7 +139,8 @@ impl AppState {
             system_hostname: metrics.hostname.clone(),
             system_kernel: metrics.kernel.clone(),
             weather_info: metrics.weather,
-            pipeline_executor: PipelineExecutor::new(Some("config/pipelines.yaml")),
+            pipeline_executor,
+            last_ollama_check: 0,
         }
     }
 }
@@ -169,9 +179,9 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(logger, log_state, cmd_state)));
+    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(logger.clone(), log_state, cmd_state)));
 
-    let router = Arc::new(TokioMutex::new(IntentRouter::new(None)));
+    let router = Arc::new(TokioMutex::new(IntentRouter::new(None, logger.clone())));
 
     let tick_rate = Duration::from_millis(250);
     let tx_input = tx.clone();
@@ -245,7 +255,8 @@ async fn main() -> Result<()> {
                             }
                             FocusPanel::Command => {
                                 let mut cmd_state = state.cmd_state.lock().unwrap();
-                                cmd_state.scroll = cmd_state.scroll.saturating_sub(1);
+                                let max_scroll = cmd_state.scroll.saturating_sub(1);
+                                cmd_state.scroll = max_scroll;
                             }
                         }
                     }
@@ -254,13 +265,14 @@ async fn main() -> Result<()> {
                         match state.focused_panel {
                             FocusPanel::Logs => {
                                 let mut log_state = state.log_state.lock().unwrap();
-                                let max_scroll = log_state.logs.len().saturating_sub(visible_lines) as u16;
+                                let total_lines = log_state.total_wrapped_lines(80);
+                                let max_scroll = total_lines.saturating_sub(visible_lines) as u16;
                                 log_state.scroll = (log_state.scroll + 1).min(max_scroll);
                             }
                             FocusPanel::Command => {
                                 let mut cmd_state = state.cmd_state.lock().unwrap();
-                                let max_scroll = cmd_state.commands.len().saturating_sub(visible_lines) as u16;
-                                cmd_state.scroll = (cmd_state.scroll + 1).min(max_scroll);
+                                let max_scroll = cmd_state.scroll.saturating_add(1).min(50);
+                                cmd_state.scroll = max_scroll;
                             }
                         }
                     }
@@ -276,22 +288,28 @@ async fn main() -> Result<()> {
                         if cmd == "quit" || cmd == "exit" {
                             state.should_quit = true;
                         } else if state.router_online {
+                            state.logs.push(format!("[DEBUG] Sending '{}' to Intent Router...", cmd));
                             let tx_intent = tx.clone();
+                            let tx_log = tx.clone();
                             let cmd_clone = cmd.clone();
                             let router_clone = router.clone();
                             tokio::spawn(async move {
                                 let r = router_clone.lock().await;
                                 match r.route(&cmd_clone).await {
                                     Ok(intent) => {
+                                        let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Intent parsed: event={}, params={:?}", intent.event, intent.params))).await;
                                         let _ = tx_intent.send(SystemEvent::IntentResult { intent }).await;
                                     }
                                     Err(e) => {
+                                        let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Intent Router error: {}", e))).await;
                                         let _ = tx_intent
                                             .send(SystemEvent::IntentError(e.to_string()))
                                             .await;
                                     }
                                 }
                             });
+                        } else {
+                            state.logs.push("[DEBUG] Router offline, cannot process input".to_string());
                         }
                     }
                     _ => {}
@@ -303,22 +321,27 @@ async fn main() -> Result<()> {
                     }
                 }
                 SystemEvent::IntentResult { intent } => {
-                    state
-                        .logs
-                        .push(format!("[ROUTER] Intent -> {} | {}", intent.target, intent.event));
+                    state.logs.push(format!("[ROUTER] Intent -> {} | Params: {:?}", intent.event, intent.params));
                     state.router_online = true;
                     state.router_status = "PROCESSING".to_string();
+                    state.logger.info("EXECUTOR", &format!("Starting pipeline: {} with params {:?}", intent.event, intent.params));
                     
                     let executor = state.pipeline_executor.clone();
-                    let target = intent.target.clone();
                     let event = intent.event.clone();
+                    let params = intent.params.clone();
                     let qm = state.queue_manager.clone();
+                    let logger = state.logger.clone();
+                    let tx_log = tx.clone();
+                    
                     tokio::spawn(async move {
-                        let result = executor.find_and_execute(&format!("{} {}", target, event), &event);
+                        logger.info("EXECUTOR", &format!("Executing pipeline: {}", event));
+                        let result = executor.find_and_execute(&event, &params);
                         match result {
                             Ok(summary) => {
+                                logger.info("EXECUTOR", &format!("Pipeline {} result: {}", event, &summary[..summary.len().min(200)]));
+                                let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Pipeline {} completed", event))).await;
                                 let output = OutputQueueItem::new(
-                                    target.clone(),
+                                    event.clone(),
                                     "input_id".to_string(),
                                     summary.clone(),
                                     summary,
@@ -328,7 +351,8 @@ async fn main() -> Result<()> {
                                 }
                             }
                             Err(e) => {
-                                eprintln!("Pipeline execution failed: {}", e);
+                                logger.error("EXECUTOR", &format!("Pipeline {} FAILED: {}", event, e));
+                                let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Pipeline {} FAILED: {}", event, e))).await;
                             }
                         }
                     });
@@ -347,6 +371,15 @@ async fn main() -> Result<()> {
                         .logs
                         .push("[ROUTER] Ollama Intent Router ONLINE".to_string());
                 }
+                SystemEvent::RouterOffline => {
+                    if state.router_online {
+                        state.router_online = false;
+                        state.router_status = "OFFLINE".to_string();
+                        state
+                            .logs
+                            .push("[ROUTER] Ollama Intent Router OFFLINE".to_string());
+                    }
+                }
                 SystemEvent::Tick => {
                     state.system_service.refresh();
                     let metrics = state.system_service.get_metrics();
@@ -356,6 +389,20 @@ async fn main() -> Result<()> {
                     state.system_hostname = metrics.hostname;
                     state.system_kernel = metrics.kernel;
                     state.weather_info = metrics.weather;
+                    
+                    if metrics.uptime_secs.saturating_sub(state.last_ollama_check) > 30 {
+                        state.last_ollama_check = metrics.uptime_secs;
+                        let router = state.ollama_service.clone();
+                        let tx_clone = tx.clone();
+                        tokio::spawn(async move {
+                            if router.health_check().await {
+                                let _ = tx_clone.send(SystemEvent::RouterOnline).await;
+                            } else {
+                                let _ = tx_clone.send(SystemEvent::RouterOffline).await;
+                            }
+                        });
+                    }
+
                     if state.router_status == "PROCESSING" {
                         state.router_status = "IDLE".to_string();
                     }

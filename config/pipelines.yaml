@@ -1,229 +1,117 @@
 # DHI Pipeline Configuration
 # Each pipeline defines:
-# - classification type and description
-# - trigger patterns (what user inputs match this pipeline)
-# - params to extract from user input
-# - output format for the extracted data
-# - action: executable command/script to run
-# - summarizer: how to convert output to human-readable summary
+# - name: pipeline identifier
+# - description: what it handles (keywords for LLM routing)
+# - params: parameters to extract
+# - action: what to execute
+# - summarizer: prompt for LLM to summarize output
+#
+# Action types:
+# - http: HTTP request (url, method, optional auth)
+# - exec: execute binary (command, args)
+# - bash: run bash script (script)
+# - open: open URL/app (target)
+# - internal: internal handler (handler name)
 
 pipelines:
-  - name: portfolio
-    type: portfolio
-    description: Stock market, trading, and investment related queries
-    triggers:
-      - stock
-      - portfolio
-      - share
-      - nifty
-      - sensex
-      - mutual fund
-      - investing
+  - name: stocks
+    description: Stock queries with news (stock, share, nifty, sensex, mutual fund, investing, buy, sell) anything related to stocks fundamental live stock data and related news
     params:
-      - name: symbol
-        type: string
+      - name: company
         required: true
-        description: Stock symbol or company name
-      - name: action
-        type: string
-        required: false
-        default: check
-        description: Action to perform (check, buy, sell, info)
-    output_format: '{"symbol":"{symbol}","action":"{action}"}'
+        extract_hint: "Extract company name, stock symbol, or index from the input (e.g., 'nifty50', 'apple', 'reliance')"
     action:
-      type: http
-      url: "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-      method: GET
+      type: bash
+      script: "scripts/stock {company}"
     summarizer:
-      enabled: true
-      prompt: "Summarize this stock data into 2-3 sentences highlighting price, change, and key metrics."
+      prompt: "Summarize stock data into 2-3 sentences highlighting price, change, and key metrics."
 
-  - name: rss
-    type: rss
-    description: RSS feed fetching and news aggregation
-    triggers:
-      - rss
-      - feed
-      - news
-      - article
-      - blog
-    params:
-      - name: source
-        type: string
-        required: true
-        description: RSS feed source URL or name
-      - name: limit
-        type: integer
-        required: false
-        default: 5
-        description: Number of articles to fetch
-    output_format: '{"source":"{source}","limit":{limit}}'
-    action:
-      type: http
-      url: "{source}"
-      method: GET
-    summarizer:
-      enabled: true
-      prompt: "Summarize these RSS articles into a brief overview with headlines and key points."
-
-  - name: music
-    type: music
-    description: Music playback and search queries
-    triggers:
-      - play
-      - song
-      - music
-      - podcast
-      - spotify
+  - name: ollama_search
+    description: Web search (search, find, what is, how to, google)
     params:
       - name: query
-        type: string
         required: true
-        description: Song name or artist to search
-      - name: service
-        type: string
-        required: false
-        default: spotify
-        description: Music service to use
-    output_format: '{"query":"{query}","service":"{service}"}'
-    action:
-      type: command
-      command: "spotify-cli"
-      args: ["search", "{query}"]
-    summarizer:
-      enabled: true
-      prompt: "List the top 3 search results with song name and artist."
-
-  - name: search
-    type: search
-    description: Web search and information lookup
-    triggers:
-      - search
-      - find
-      - what is
-      - how to
-      - google
-    params:
-      - name: query
-        type: string
-        required: true
-        description: Search query
       - name: count
-        type: integer
         required: false
         default: 5
-        description: Number of results
-    output_format: '{"query":"{query}","count":{count}}'
     action:
       type: http
-      url: "https://api.search.brave.com/res/v1/web/search?q={query}&count={count}"
+      url: "https://duckduckgo.com/html/?q={query}"
       method: GET
     summarizer:
-      enabled: true
       prompt: "Provide a brief summary of the top 3 search results."
 
-  - name: system
-    type: system
-    description: System status, metrics, and system commands
-    triggers:
-      - system
-      - status
-      - cpu
-      - memory
-      - metrics
-      - uptime
-    params:
-      - name: metric
-        type: string
-        required: false
-        default: all
-        description: Specific metric to fetch (cpu, memory, disk, all)
-    output_format: '{"metric":"{metric}"}'
-    action:
-      type: internal
-      handler: system_metrics
-    summarizer:
-      enabled: true
-      prompt: "Summarize system metrics into a short status update."
-
   - name: expense
-    type: expense
-    description: Expense tracking and logging
-    triggers:
-      - expense
-      - spent
-      - bought
-      - cost
-      - price
+    description: Expense tracking (expense, spent, bought, cost, price)
     params:
       - name: amount
-        type: float
         required: true
-        description: Expense amount
       - name: category
-        type: string
         required: false
         default: misc
-        description: Expense category
       - name: description
-        type: string
         required: false
-        description: Expense description
-    output_format: '{"amount":{amount},"category":"{category}","description":"{description}"}'
     action:
       type: internal
       handler: expense_log
     summarizer:
-      enabled: true
       prompt: "Confirm the expense was logged with amount and category."
 
   - name: health
-    type: health
-    description: Health tracking and fitness data
-    triggers:
-      - health
-      - workout
-      - exercise
-      - steps
-      - sleep
+    description: Health tracking (health, workout, exercise, steps, sleep)
     params:
       - name: action
-        type: string
         required: false
         default: check
-        description: Health action (log, check, summary)
       - name: metric
-        type: string
         required: false
-        description: Specific metric (steps, sleep, workout)
-    output_format: '{"action":"{action}","metric":"{metric}"}'
     action:
       type: internal
       handler: health_tracker
     summarizer:
-      enabled: true
       prompt: "Provide a brief health summary with key metrics."
 
-# Internal pipelines (run automatically, not triggered by user)
-internal:
-  - name: history
-    type: internal
-    description: Read from ./data and create conversation-style summary
-    schedule: on_demand
+  - name: music
+    description: Music playback/search (play, song, music, podcast)
+    params:
+      - name: query
+        required: true
+      - name: service
+        required: false
+        default: spotify
     action:
-      type: internal
-      handler: history_summary
+      type: exec
+      command: "spotify-cli"
+      args: ["search", "{query}"]
     summarizer:
-      enabled: true
-      prompt: "Create a conversational summary of recent activities from the data files."
+      prompt: "List the top 3 search results with song name and artist."
 
-  - name: daily_brief
-    type: internal
-    description: Daily summary of all pipeline activities
-    schedule: "0 9 * * *"  # 9 AM daily
+  - name: history
+    description: Search past conversations/decisions (what did I, remember, earlier, before, past, decision, discussed, talked about)
+    params:
+      - name: query
+        required: true
+      - name: date_filter
+        required: false
+        default: all
+      - name: depth
+        required: false
+        default: 1
     action:
       type: internal
-      handler: daily_brief
+      handler: memory_grep
     summarizer:
-      enabled: true
-      prompt: "Create a morning brief summarizing yesterday's activities and current status."
+      prompt: "Synthesize findings using 3-level thought: (1) Direct matches with context, (2) Related concepts found in loop, (3) Timeline synthesis connecting past entries. Format as: [Direct Answer] + [Related Context] + [Timeline]"
+
+  - name: conversation
+    description: Continue/clarify existing conversation (continue, clarify, more, explain, earlier response)
+    params:
+      - name: topic
+        required: true
+      - name: last_context
+        required: false
+    action:
+      type: internal
+      handler: conversation_continue
+    summarizer:
+      prompt: "Provide contextual continuation building on the previous exchange."

@@ -1,0 +1,37 @@
+#!/bin/bash
+
+QUERY="$1"
+
+if [ -z "$QUERY" ]; then
+  echo "Usage: stock <company-or-symbol>"
+  exit 1
+fi
+
+DATA=$(curl -s \
+  -H "User-Agent: Mozilla/5.0" \
+  "https://query1.finance.yahoo.com/v1/finance/search?q=$QUERY")
+
+SYM=$(echo "$DATA" | jq -r '.quotes[0].symbol')
+
+if [ "$SYM" = "null" ] || [ -z "$SYM" ]; then
+  echo "No stock symbol found"
+  exit 1
+fi
+
+PRICE=$(curl -s \
+  -H "User-Agent: Mozilla/5.0" \
+  "https://query1.finance.yahoo.com/v8/finance/chart/$SYM" \
+  | jq '.chart.result[0].meta.regularMarketPrice')
+
+echo "$DATA" | jq --arg price "$PRICE" '
+{
+  symbol: .quotes[0].symbol,
+  company: .quotes[0].shortname,
+  exchange: .quotes[0].exchDisp,
+  sector: .quotes[0].sector,
+  price: ($price | tonumber),
+  news: (.news[0:3] | map({
+    title,
+    publisher
+  }))
+}'

@@ -37,20 +37,55 @@ impl CommandState {
     pub fn add_command(&mut self, cmd: String) {
         self.commands.push(cmd);
     }
-
-    pub fn auto_scroll(&mut self, visible_lines: usize) {
-        if self.commands.len() > visible_lines {
-            self.scroll = (self.commands.len() - visible_lines) as u16;
-        } else {
-            self.scroll = 0;
-        }
-    }
 }
 
 impl Default for CommandState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![text.to_string()];
+    }
+
+    let mut result = Vec::new();
+    for line in text.lines() {
+        if line.is_empty() {
+            result.push(String::new());
+            continue;
+        }
+
+        let mut current = String::new();
+        for word in line.split_whitespace() {
+            let word_len = word.chars().count();
+            let current_len = current.chars().count();
+            let next_len = if current.is_empty() {
+                word_len
+            } else {
+                current_len + 1 + word_len
+            };
+
+            if next_len > max_width {
+                if !current.is_empty() {
+                    result.push(current);
+                }
+                current = word.to_string();
+            } else {
+                if current.is_empty() {
+                    current = word.to_string();
+                } else {
+                    current.push(' ');
+                    current.push_str(word);
+                }
+            }
+        }
+        if !current.is_empty() {
+            result.push(current);
+        }
+    }
+    result
 }
 
 pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) {
@@ -64,17 +99,29 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) 
         Style::default().fg(Palette::BORDER_UNFOCUSED)
     };
 
+    let width = area.width as usize;
+    let wrap_width = width.saturating_sub(10).max(20);
+
     let mut all_lines: Vec<Line> = Vec::new();
 
     for output in output_history.iter().rev().take(20) {
-        all_lines.push(Line::from(vec![
-            Span::styled(
-                format!("[{}]", &output.pipeline[..1].to_uppercase()),
-                Style::default().fg(Palette::TEXT_ACCENT),
-            ),
-            Span::styled(" ", Style::default()),
-            Span::styled(&output.summary, Style::default().fg(Palette::TEXT_DIM)),
-        ]));
+        let pipeline_char = output.pipeline.chars().next().unwrap_or('?');
+        let prefix = format!("[{}] ", pipeline_char.to_uppercase());
+        let wrapped = wrap_text(&output.summary, wrap_width.saturating_sub(prefix.len()));
+
+        for (i, line) in wrapped.iter().enumerate() {
+            if i == 0 {
+                all_lines.push(Line::from(vec![
+                    Span::styled(prefix.clone(), Style::default().fg(Palette::TEXT_ACCENT)),
+                    Span::styled(line.clone(), Style::default().fg(Palette::TEXT_DIM)),
+                ]));
+            } else {
+                all_lines.push(Line::from(vec![Span::styled(
+                    line.clone(),
+                    Style::default().fg(Palette::TEXT_DIM),
+                )]));
+            }
+        }
     }
 
     if !cmd_state.commands.is_empty() {
@@ -84,13 +131,22 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) 
         )));
 
         for (i, cmd) in cmd_state.commands.iter().enumerate().rev().take(10) {
-            all_lines.push(Line::from(vec![
-                Span::styled(
-                    format!("{:>4}> ", i + 1),
-                    Style::default().fg(Palette::TEXT_ACCENT),
-                ),
-                Span::styled(cmd.clone(), Style::default().fg(Palette::TEXT_DIM)),
-            ]));
+            let prefix = format!("{:>4}> ", i + 1);
+            let wrapped = wrap_text(cmd, wrap_width.saturating_sub(prefix.len()));
+
+            for (j, line) in wrapped.iter().enumerate() {
+                if j == 0 {
+                    all_lines.push(Line::from(vec![
+                        Span::styled(prefix.clone(), Style::default().fg(Palette::TEXT_ACCENT)),
+                        Span::styled(line.clone(), Style::default().fg(Palette::TEXT_DIM)),
+                    ]));
+                } else {
+                    all_lines.push(Line::from(vec![Span::styled(
+                        line.clone(),
+                        Style::default().fg(Palette::TEXT_DIM),
+                    )]));
+                }
+            }
         }
     }
 

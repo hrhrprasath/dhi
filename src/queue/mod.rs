@@ -78,8 +78,8 @@ pub struct QueueManager {
 impl QueueManager {
     pub fn new() -> anyhow::Result<Self> {
         let data_dir = std::env::current_dir()
-            .map(|p| p.join("data"))
-            .unwrap_or_else(|_| PathBuf::from("./data"));
+            .map(|p| p.join(".data"))
+            .unwrap_or_else(|_| PathBuf::from("./.data"));
         let queue_dir = data_dir.join("queue");
 
         let _ = fs::create_dir_all(&queue_dir);
@@ -190,8 +190,8 @@ impl QueueManager {
 impl Default for QueueManager {
     fn default() -> Self {
         Self {
-            data_dir: PathBuf::from("./data"),
-            output_queue_path: PathBuf::from("./data/queue/output.json"),
+            data_dir: PathBuf::from("./.data"),
+            output_queue_path: PathBuf::from("./.data/queue/output.json"),
             input_queue: Vec::new(),
         }
     }

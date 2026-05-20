@@ -58,7 +58,7 @@ impl SystemService {
 
         let should_fetch = {
             if let Ok(last) = self.last_weather_update.lock() {
-                uptime.saturating_sub(*last) > 1800
+                *last == 0 || uptime.saturating_sub(*last) > 1800
             } else {
                 true
             }
