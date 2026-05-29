@@ -17,7 +17,7 @@ import (
 
 	"charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/progress"
-	"charm.land/bubbles/v2/spinner"
+
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
@@ -77,7 +77,6 @@ type Model struct {
 	textInput    textinput.Model
 	logView      viewport.Model
 	convView     viewport.Model
-	spinner      spinner.Model
 	pipelineView viewport.Model
 	cpuProgress  progress.Model
 	ramProgress  progress.Model
@@ -118,16 +117,12 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 	ti.SetWidth(34)
 	focusCmd := ti.Focus()
 
-	s := spinner.New(spinner.WithSpinner(spinner.Moon))
-	s.Style = lipgloss.NewStyle().Foreground(accentColor)
-
-	initW := 48
-	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(5))
-	lv.SetContent("[SYSTEM][INFO] DHI Harness initializing...")
+	initW := 40
+	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(8))
+	lv.SetContent("No logs yet...")
 	cv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(8))
 	cv.SetContent("Start a conversation...")
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
-
 	cp := progress.New(progress.WithWidth(21))
 	cp.Empty = '░'
 	cp.Full = '█'
@@ -157,7 +152,6 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 		textInput:  ti,
 		logView:    lv,
 		convView:   cv,
-		spinner:    s,
 		pipelineView: pv,
 		cpuProgress: cp,
 		ramProgress: rp,
@@ -188,7 +182,6 @@ func (m *Model) Init() tea.Cmd {
 	}()
 
 	return tea.Batch(
-		func() tea.Msg { return m.spinner.Tick() },
 		m.eventPoller(),
 		tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
 		m.focusCmd,
@@ -221,11 +214,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.SetWidth(rw - 16)
 		m.refreshLogContent()
 		return m, m.eventPoller()
-
-	case spinner.TickMsg:
-		var cmd tea.Cmd
-		m.spinner, cmd = m.spinner.Update(msg)
-		return m, tea.Batch(cmd, m.eventPoller())
 
 	case tickMsg:
 		m.uptimeSec++
@@ -576,10 +564,19 @@ func (m *Model) refreshLogContent() {
 }
 
 func (m *Model) refreshConvContent() {
+	w := m.convView.Width()
+	if w < 10 {
+		w = 40
+	}
+	wrap := lipgloss.NewStyle().Width(w)
 	var sb strings.Builder
 	for _, c := range m.conversations {
-		sb.WriteString(fmt.Sprintf("You: %s\n\nDHI: %s\n\n", c.Input, c.Response))
-		sb.WriteString(strings.Repeat("─", 30) + "\n\n")
+		sb.WriteString("You: ")
+		sb.WriteString(wrap.Render(c.Input))
+		sb.WriteString("\n\nDHI: ")
+		sb.WriteString(wrap.Render(c.Response))
+		sb.WriteString("\n\n")
+		sb.WriteString(strings.Repeat("─", w) + "\n\n")
 	}
 	if sb.Len() == 0 {
 		sb.WriteString("Start a conversation...")
@@ -674,20 +671,15 @@ func (m *Model) renderPipelinesBlock() string {
 }
 
 func (m *Model) renderDHI() string {
-	spinnerView := m.spinner.View()
 	info := fmt.Sprintf("v%s\nHost: %s\nKernel: %s\nUp: %dm",
 		"0.1.0",
 		m.hostname,
 		m.kernel,
 		m.uptimeSec/60,
 	)
-	content := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Foreground(accentColor).Render(spinnerView),
-		"  ",
-		lipgloss.NewStyle().Foreground(dimColor).Render(info),
-	)
 	return borderStyle.Width(28).Render(
-		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" DHI OS ") + "\n" + content,
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" DHI OS ") + "\n" +
+			lipgloss.NewStyle().Foreground(dimColor).Render(info),
 	)
 }
 

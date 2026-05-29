@@ -32,7 +32,8 @@ type PipelineAction struct {
 	Target    string            `yaml:"target,omitempty"`
 	Handler   string            `yaml:"handler,omitempty"`
 	Auth      *HTTPAuth         `yaml:"auth,omitempty"`
-	Summarize bool              `yaml:"summarize"`
+	Summarize     bool `yaml:"summarize"`
+	IgnoreContext bool `yaml:"summarize_ignore_context"`
 }
 
 type HTTPAuth struct {
@@ -97,7 +98,7 @@ func defaultPipelines() []Pipeline {
 		}, Action: PipelineAction{Type: "bash", Script: "scripts/stock {company}"}},
 		{Name: "search_inline", Description: "Search web inline", Params: []ParamDefinition{
 			{Name: "query", Required: true},
-		}, Action: PipelineAction{Type: "bash", Summarize: true, Script: "scripts/search_inline {query}"}},
+		}, Action: PipelineAction{Type: "bash", Summarize: true, IgnoreContext: true, Script: "scripts/search_inline {query}"}},
 		{Name: "search_browser", Description: "Open a website or search in default browser — only when explicitly asked to open/open in browser", Params: []ParamDefinition{
 			{Name: "query", Required: true},
 			{Name: "provider", Required: false},

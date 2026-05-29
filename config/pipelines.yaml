@@ -17,6 +17,7 @@ pipelines:
     action:
       type: bash
       summarize: true
+      summarize_ignore_context: true
       script: "scripts/search_inline {query}"
 
   - name: search_browser

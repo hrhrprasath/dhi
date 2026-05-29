@@ -50,7 +50,11 @@ func (e *Executor) FindAndExecute(event string, params map[string]string, userIn
 	}
 
 	if pl.Action.Summarize {
-		synth := e.synthesizeOutput(output, pl.Name, userInput, convCtx)
+		ctx := convCtx
+		if pl.Action.IgnoreContext {
+			ctx = ""
+		}
+		synth := e.synthesizeOutput(output, pl.Name, userInput, ctx)
 		return output, synth
 	}
 	return output, output
