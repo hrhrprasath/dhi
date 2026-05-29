@@ -7,31 +7,49 @@ if [ -z "$QUERY" ]; then
   exit 1
 fi
 
-DATA=$(curl -s \
-  -H "User-Agent: Mozilla/5.0" \
-  "https://query1.finance.yahoo.com/v1/finance/search?q=$QUERY")
+LC_QUERY=$(echo "$QUERY" | tr '[:upper:]' '[:lower:]')
 
-SYM=$(echo "$DATA" | jq -r '.quotes[0].symbol')
+# Map common index names to Yahoo Finance symbols
+case "$LC_QUERY" in
+  nifty*|nifty50|nifty\ 50|^nsei)
+    SYM="^NSEI"
+    NAME="Nifty 50"
+    NEWS_QUERY="Nifty+50"
+    ;;
+  sensex|bse*|^bsesn)
+    SYM="^BSESN"
+    NAME="BSE Sensex"
+    NEWS_QUERY="Sensex"
+    ;;
+  *)
+    DATA=$(curl -s -H "User-Agent: Mozilla/5.0" \
+      "https://query1.finance.yahoo.com/v1/finance/search?q=$QUERY")
+    SYM=$(echo "$DATA" | jq -r '.quotes[0].symbol // empty')
+    if [ -z "$SYM" ] || [ "$SYM" = "null" ]; then
+      echo "No stock symbol found for '$QUERY'"
+      exit 1
+    fi
+    NAME=$(echo "$DATA" | jq -r '.quotes[0].shortname // .quotes[0].longname // empty')
+    NEWS_QUERY="$QUERY"
+    ;;
+esac
 
-if [ "$SYM" = "null" ] || [ -z "$SYM" ]; then
-  echo "No stock symbol found"
+# Fetch price
+PRICE=$(curl -s -H "User-Agent: Mozilla/5.0" \
+  "https://query1.finance.yahoo.com/v8/finance/chart/$SYM" \
+  | jq -r '.chart.result[0].meta.regularMarketPrice // empty')
+
+if [ -z "$PRICE" ] || [ "$PRICE" = "null" ]; then
+  echo "Could not fetch price for $SYM"
   exit 1
 fi
 
-PRICE=$(curl -s \
-  -H "User-Agent: Mozilla/5.0" \
-  "https://query1.finance.yahoo.com/v8/finance/chart/$SYM" \
-  | jq '.chart.result[0].meta.regularMarketPrice')
+# Fetch news
+NEWS_DATA=$(curl -s -H "User-Agent: Mozilla/5.0" \
+  "https://query1.finance.yahoo.com/v1/finance/search?q=$NEWS_QUERY")
 
-echo "$DATA" | jq --arg price "$PRICE" '
-{
-  symbol: .quotes[0].symbol,
-  company: .quotes[0].shortname,
-  exchange: .quotes[0].exchDisp,
-  sector: .quotes[0].sector,
-  price: ($price | tonumber),
-  news: (.news[0:3] | map({
-    title,
-    publisher
-  }))
-}'
+printf "=== %s (%s) ===\n" "$NAME" "$SYM"
+printf "Price: %s\n" "$PRICE"
+printf "\n"
+printf "News:\n"
+echo "$NEWS_DATA" | jq -r '.news[0:3][] | "• \(.title) (\(.publisher))"' 2>/dev/null || printf "No recent news\n"

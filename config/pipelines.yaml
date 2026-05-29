@@ -1,17 +1,3 @@
-# DHI Pipeline Configuration
-# Each pipeline defines:
-# - name: pipeline identifier
-# - description: what it handles (keywords for LLM routing)
-# - params: parameters to extract
-# - action: what to execute
-#
-# Action types:
-# - http: HTTP request (url, method, optional auth)
-# - exec: execute binary (command, args)
-# - bash: run bash script (script)
-# - open: open URL/app (target)
-# - internal: internal handler (handler name)
-
 pipelines:
   - name: stocks
     description: Stock queries with news (stock, share, nifty, sensex, mutual fund, investing, buy, sell) anything related to stocks fundamental live stock data and related news
@@ -30,6 +16,7 @@ pipelines:
         required: true
     action:
       type: bash
+      summarize: true
       script: "scripts/search_inline {query}"
 
   - name: search_browser
@@ -51,65 +38,27 @@ pipelines:
         required: true
     action:
       type: bash
+      summarize: true
       script: "scripts/browse {url}"
 
-  - name: expense
-    description: Expense tracking (expense, spent, bought, cost, price)
+  - name: system
+    description: System metrics and observability (system info, metrics, status, cpu, ram, uptime, kernel)
     params:
-      - name: amount
-        required: true
-      - name: category
+      - name: metric
         required: false
-        default: misc
-      - name: description
-        required: false
+        default: all
     action:
       type: internal
-      handler: expense_log
+      handler: system_metrics
 
-  - name: health
-    description: Health tracking (health, workout, exercise, steps, sleep)
+  - name: todo
+    description: Create and manage todos/reminders (track, remind, todo, task, remember, follow up)
     params:
       - name: action
         required: false
-        default: check
-      - name: metric
-        required: false
-    action:
-      type: internal
-      handler: health_tracker
-
-  - name: music
-    description: Music playback/search (play, song, music, podcast, spotify)
-    params:
-      - name: query
+        default: add
+      - name: text
         required: true
     action:
-      type: bash
-      script: "scripts/spotify {query}"
-
-  - name: history
-    description: Search past conversations/decisions (what did I, remember, earlier, before, past, decision, discussed, talked about)
-    params:
-      - name: query
-        required: true
-      - name: date_filter
-        required: false
-        default: all
-      - name: depth
-        required: false
-        default: 1
-    action:
       type: internal
-      handler: memory_grep
-
-  - name: conversation
-    description: Continue/clarify existing conversation (continue, clarify, more, explain, earlier response)
-    params:
-      - name: topic
-        required: true
-      - name: last_context
-        required: false
-    action:
-      type: internal
-      handler: conversation_continue
+      handler: todo
