@@ -280,7 +280,7 @@ func defaultPipelines() []PipelineInfo {
 		}},
 		{Name: "TODO", Description: "Create and manage todos/reminders (track, remind, todo, task, remember, follow up)", Params: []ParamInfo{
 			{Name: "action", Required: false, Default: "add"},
-			{Name: "text", Required: true},
+			{Name: "text", Required: false},
 		}},
 	}
 }

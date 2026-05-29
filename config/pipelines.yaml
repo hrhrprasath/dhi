@@ -58,7 +58,7 @@ pipelines:
         required: false
         default: add
       - name: text
-        required: true
+        required: false
     action:
       type: internal
       handler: todo

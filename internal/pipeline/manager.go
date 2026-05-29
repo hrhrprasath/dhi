@@ -109,7 +109,7 @@ func defaultPipelines() []Pipeline {
 		}, Action: PipelineAction{Type: "internal", Handler: "system_metrics"}},
 		{Name: "todo", Description: "Create and manage todos/reminders", Params: []ParamDefinition{
 			{Name: "action", Required: false},
-			{Name: "text", Required: true},
+			{Name: "text", Required: false},
 		}, Action: PipelineAction{Type: "internal", Handler: "todo"}},
 	}
 }
