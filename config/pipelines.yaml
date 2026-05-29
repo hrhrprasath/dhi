@@ -20,7 +20,7 @@ pipelines:
       script: "scripts/search_inline {query}"
 
   - name: search_browser
-    description: Open web search in default browser (search in browser, open youtube, open wikipedia, look up)
+    description: Open a website or search in default browser — only when explicitly asked to open/open in browser (open youtube, open wikipedia, open in browser)
     params:
       - name: query
         required: true

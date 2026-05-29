@@ -446,6 +446,23 @@ func (m *Model) processQueue() {
 	}
 }
 
+func cleanResponse(response, userInput string) string {
+	idx := strings.Index(response, "[USER]")
+	if idx < 0 {
+		idx = strings.Index(response, "---BEGIN INPUT---")
+	}
+	if idx < 0 {
+		idx = strings.Index(response, "User says:")
+	}
+	if idx < 0 && len(userInput) > 0 {
+		idx = strings.Index(response, "User: "+userInput)
+	}
+	if idx >= 0 {
+		response = strings.TrimSpace(response[:idx])
+	}
+	return response
+}
+
 func (m *Model) handleConversation(item *queue.InputItem, summaryText string, intentResult *intent.ParsedIntent) {
 	m.logger.Info("CONSUMER", fmt.Sprintf("Intent: %s — chatting", intentResult.Event))
 
@@ -463,6 +480,8 @@ func (m *Model) handleConversation(item *queue.InputItem, summaryText string, in
 		m.queueMgr.UpdateItem(item)
 		return
 	}
+
+	response = cleanResponse(response, item.RawInput)
 
 	m.convMgr.UpdateSummary(item.RawInput, response)
 	m.events <- convMsg{input: item.RawInput, response: response}
@@ -496,16 +515,17 @@ func (m *Model) handlePipeline(item *queue.InputItem, summaryText string, intent
 
 	raw, synth := m.executor.FindAndExecute(intentResult.Event, params, item.RawInput, summaryText)
 
-	body := synth
-	if body == "" {
-		body = raw
+	var reply string
+	if synth != raw {
+		reply = synth
+	} else if intentResult.Description != "" {
+		reply = intentResult.Description
+	} else {
+		reply = "Action completed"
 	}
-	reply := body
-	if intentResult.Description != "" {
-		reply = "✅ " + intentResult.Description
-		if body != "" {
-			reply += "\n\n" + body
-		}
+
+	if raw != "" {
+		m.logger.Info("EXECUTOR", fmt.Sprintf("Raw output:\n%s", raw))
 	}
 
 	m.convMgr.UpdateSummary(item.RawInput, reply)

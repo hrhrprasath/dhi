@@ -64,7 +64,7 @@ func (m *Manager) FormatForPrompt(s *Summary) string {
 	var sb strings.Builder
 
 	if s.Overall != "" {
-		sb.WriteString("Overall: " + s.Overall + "\n")
+		sb.WriteString("Conversation summary: " + s.Overall + "\n")
 	}
 
 	if len(s.Turns) > 0 {
@@ -75,7 +75,7 @@ func (m *Manager) FormatForPrompt(s *Summary) string {
 		}
 		for i := start; i < len(s.Turns); i++ {
 			t := s.Turns[i]
-			sb.WriteString(fmt.Sprintf("User: %s\nDHI: %s\n\n", t.Input, t.Response))
+			sb.WriteString(fmt.Sprintf("[USER] %s\n[ASSISTANT] %s\n\n", t.Input, t.Response))
 		}
 	}
 

@@ -27,10 +27,11 @@ CORE TRAITS:
 - Proactive — anticipate needs when possible
 
 COMMUNICATION STYLE:
-- Warm and approachable while remaining professional
 - Concise and to-the-point (2-3 paragraphs max)
+- No greetings after the first exchange — dive straight into content
 - Uses past conversation context for continuity
 - References past discussions when relevant
+- Never fabricate facts, model names, versions, or release dates
 - If unable to help, politely explains why and offers alternatives`
 
 func BuildSchema() string {
@@ -72,16 +73,9 @@ func buildExample(p PipelineInfo) string {
 		}
 		params[param.Name] = exampleValue(param.Name)
 	}
-	desc := p.Description
-	if idx := strings.Index(desc, "("); idx != -1 {
-		desc = strings.TrimSpace(desc[:idx])
-	}
-	if len(desc) > 60 {
-		desc = desc[:60] + "..."
-	}
 	jsonParts := []string{
 		fmt.Sprintf(`"event": "EXECUTE_%s"`, strings.ToUpper(p.Name)),
-		fmt.Sprintf(`"description": "%s"`, desc),
+		fmt.Sprintf(`"description": "Execute %s"`, p.Name),
 	}
 	if len(params) > 0 {
 		var paramPairs []string
@@ -140,6 +134,14 @@ CONVERSATION HISTORY:
 CLASSIFIER:
 Default action is CONVERSATION. Only use EXECUTE_XXX for clear actionable requests.
 
+RULE: The "description" field must be a brief, specific summary of the action for this particular user query.
+  Good:  "description": "Search for recent news about Claude Opus"
+  Bad:   "description": "Search web and display results in terminal"
+  Good:  "description": "Fetch Nifty 50 stock price"
+  Bad:   "description": "Stock queries with news"
+  Good:  "description": "Greet the user"
+  Bad:   "description": "CONVERSATION"
+
 TYPES:
 - CONVERSATION: params: search_terms (optional string array — key nouns/entities to search past data)
   Examples:
@@ -169,9 +171,11 @@ func ConversationPrompt(userInput, summaryText, searchResults string) string {
 CONVERSATION HISTORY:
 %s%s
 
-User says: "%s"
+---BEGIN INPUT---
+%s
+---END INPUT---
 
-Respond as DHI Harness. Be helpful, concise, and natural. Reference past data if relevant.`,
+Now respond as DHI Harness. Write ONLY your reply — no labels, no prefixes, no echoing the input. No greetings in follow-ups — get straight to the point. Never fabricate facts, model names, versions, or release dates. If you don't know, say so.`,
 		guardrailPrefix, persona, summaryText, context, userInput)
 }
 
@@ -183,12 +187,16 @@ func SynthesisPrompt(rawData, pipeline, userInput, conversationContext string) s
 CONVERSATION HISTORY:
 %s
 
-The user asked: "%s"
+---BEGIN INPUT---
+%s
+---END INPUT---
 
 Pipeline "%s" returned the following data:
 %s
 
-Respond conversationally as DHI Harness, referencing the user's query. Be helpful, natural, and concise (2-3 paragraphs).`,
+Now respond as DHI Harness incorporating the data. Write ONLY your reply — no labels, no prefixes, no echoing the input. No greetings in follow-ups — get straight to the point. Never fabricate facts, model names, versions, or release dates. If the data doesn't answer the query, say so honestly.
+
+IMPORTANT: Only use conversation history if it's directly related to the current query or a clear continuation. If the history is about a different topic, ignore it and focus on the pipeline data and current input.`,
 		guardrailPrefix, persona, conversationContext, userInput, pipeline, rawData)
 }
 
@@ -260,7 +268,7 @@ func defaultPipelines() []PipelineInfo {
 		{Name: "SEARCH_INLINE", Description: "Search web and display results in terminal (search, find, what is, how to, google)", Params: []ParamInfo{
 			{Name: "query", Required: true},
 		}},
-		{Name: "SEARCH_BROWSER", Description: "Open web search in default browser", Params: []ParamInfo{
+		{Name: "SEARCH_BROWSER", Description: "Open a website or search in default browser — only when explicitly asked to open/open in browser", Params: []ParamInfo{
 			{Name: "query", Required: true},
 			{Name: "provider", Required: false, Default: "duckduckgo"},
 		}},
