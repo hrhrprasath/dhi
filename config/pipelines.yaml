@@ -56,9 +56,10 @@ pipelines:
     params:
       - name: action
         required: false
-        default: add
+        default: list
       - name: text
         required: false
+        extract_hint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"
     action:
       type: internal
       handler: todo

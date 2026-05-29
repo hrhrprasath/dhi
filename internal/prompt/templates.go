@@ -68,9 +68,6 @@ func BuildSchema() string {
 func buildExample(p PipelineInfo) string {
 	params := make(map[string]string)
 	for _, param := range p.Params {
-		if !param.Required && param.Default == "" {
-			continue
-		}
 		params[param.Name] = exampleValue(param.Name)
 	}
 	jsonParts := []string{
@@ -279,8 +276,8 @@ func defaultPipelines() []PipelineInfo {
 			{Name: "metric", Required: false, Default: "all"},
 		}},
 		{Name: "TODO", Description: "Create and manage todos/reminders (track, remind, todo, task, remember, follow up)", Params: []ParamInfo{
-			{Name: "action", Required: false, Default: "add"},
-			{Name: "text", Required: false},
+			{Name: "action", Required: false, Default: "list", ExtractHint: "add, list, done"},
+			{Name: "text", Required: false, ExtractHint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"},
 		}},
 	}
 }

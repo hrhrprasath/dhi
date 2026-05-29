@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -256,7 +257,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.eventPoller()
 
 	case convMsg:
-		m.conversations = append(m.conversations, conversationEntry{Input: msg.input, Response: msg.response})
+		m.conversations = append(m.conversations, conversationEntry{Input: msg.input, Response: stripMarkdown(msg.response)})
 		m.refreshConvContent()
 		m.convView.GotoBottom()
 		return m, m.eventPoller()
@@ -451,6 +452,25 @@ func (m *Model) processQueue() {
 	}
 }
 
+func stripMarkdown(s string) string {
+	s = regexp.MustCompile("```[\\s\\S]*?```").ReplaceAllString(s, "")
+	s = regexp.MustCompile("`[^`]*`").ReplaceAllString(s, "")
+	s = regexp.MustCompile("\\[([^\\]]*)\\]\\([^)]*\\)").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("!\\[([^\\]]*)\\]\\([^)]*\\)").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("\\*\\*(.*?)\\*\\*").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("__(.*?)__").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("\\*(.*?)\\*").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("_(.*?)_").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("~~(.*?)~~").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile("^#{1,6}\\s+").ReplaceAllString(s, "")
+	s = regexp.MustCompile("^>\\s?").ReplaceAllString(s, "")
+	s = regexp.MustCompile("^[-*+]\\s+").ReplaceAllString(s, "")
+	s = regexp.MustCompile("^\\d+\\.\\s+").ReplaceAllString(s, "")
+	s = regexp.MustCompile("^[-*_]{3,}$").ReplaceAllString(s, "")
+	s = regexp.MustCompile("\\n{3,}").ReplaceAllString(s, "\n\n")
+	return strings.TrimSpace(s)
+}
+
 func cleanResponse(response, userInput string) string {
 	idx := strings.Index(response, "[USER]")
 	if idx < 0 {
@@ -488,6 +508,7 @@ func (m *Model) handleConversation(item *queue.InputItem, summaryText string, in
 
 	response = cleanResponse(response, item.RawInput)
 
+	m.logger.Info("DHI", response)
 	m.convMgr.UpdateSummary(item.RawInput, response)
 	m.events <- convMsg{input: item.RawInput, response: response}
 
@@ -523,6 +544,8 @@ func (m *Model) handlePipeline(item *queue.InputItem, summaryText string, intent
 	var reply string
 	if synth != raw {
 		reply = synth
+	} else if raw != "" {
+		reply = raw
 	} else if intentResult.Description != "" {
 		reply = intentResult.Description
 	} else {
@@ -533,6 +556,7 @@ func (m *Model) handlePipeline(item *queue.InputItem, summaryText string, intent
 		m.logger.Info("EXECUTOR", fmt.Sprintf("Raw output:\n%s", raw))
 	}
 
+	m.logger.Info("DHI", reply)
 	m.convMgr.UpdateSummary(item.RawInput, reply)
 	m.events <- convMsg{input: item.RawInput, response: reply}
 	m.events <- pipelineStatusMsg{name: pipelineName, status: "IDLE"}

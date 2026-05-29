@@ -29,14 +29,12 @@ func (h *Handlers) Execute(handler string, params map[string]string) string {
 
 func (h *Handlers) handleTodo(action, text string) string {
 	switch action {
-	case "add", "":
+	case "add":
 		if text == "" {
 			return "Missing text for todo. Try: add buy milk"
 		}
 		id := h.todoMgr.Add(text)
 		return "✅ Todo created: " + text + " (id: " + id + ")"
-	case "list", "check", "all", "show":
-		return h.todoMgr.List(action == "all")
 	case "done", "complete":
 		if text == "" {
 			return "Missing todo id to mark done. Try: done 123456"
@@ -46,7 +44,7 @@ func (h *Handlers) handleTodo(action, text string) string {
 		}
 		return "Todo not found: " + text
 	default:
-		return "Unknown todo action: " + action + " (use: add, list, done)"
+		return h.todoMgr.List(false)
 	}
 }
 

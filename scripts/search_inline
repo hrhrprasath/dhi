@@ -1,3 +1,47 @@
 #!/bin/bash
 q=$(printf '%s' "$*" | jq -sRr @uri)
-w3m -dump "https://lite.duckduckgo.com/lite/?q=$q"
+
+# Get search results as text
+results=$(w3m -dump "https://lite.duckduckgo.com/lite/?q=$q" 2>/dev/null)
+
+# Print search snippet header
+echo "=== SEARCH RESULTS ==="
+echo "$results" | head -30
+echo ""
+
+# Extract first 3 result URLs:
+# indented lines with exactly one field (no spaces), containing a dot,
+# but not date-like (e.g. "2027.") or empty
+urls=$(echo "$results" \
+  | grep -E '^\s+[a-zA-Z0-9]' \
+  | grep -v '^\s+[0-9]' \
+  | awk 'NF==1 && /\./ && !/^[0-9.]+\.?$/' \
+  | head -3)
+
+if [ -z "$urls" ]; then
+  exit 0
+fi
+
+tmpdir=$(mktemp -d)
+trap "rm -rf '$tmpdir'" EXIT
+
+i=0
+for url in $urls; do
+  url=$(echo "$url" | xargs)
+  case "$url" in
+    http*) ;;
+    *) url="https://$url" ;;
+  esac
+  (
+    echo "=== PAGE $((i+1)): $url ==="
+    w3m -dump "$url" 2>/dev/null | head -80
+  ) > "$tmpdir/page_$i.txt" &
+  i=$((i+1))
+done
+
+wait
+
+for f in "$tmpdir"/page_*.txt; do
+  [ -f "$f" ] && cat "$f"
+  echo ""
+done

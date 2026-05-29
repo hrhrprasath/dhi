@@ -16,9 +16,10 @@ type Pipeline struct {
 }
 
 type ParamDefinition struct {
-	Name     string `yaml:"name"`
-	Required bool   `yaml:"required"`
-	Default  string `yaml:"default,omitempty"`
+	Name        string `yaml:"name"`
+	Required    bool   `yaml:"required"`
+	Default     string `yaml:"default,omitempty"`
+	ExtractHint string `yaml:"extract_hint,omitempty"`
 }
 
 type PipelineAction struct {
@@ -108,8 +109,8 @@ func defaultPipelines() []Pipeline {
 			{Name: "metric", Required: false},
 		}, Action: PipelineAction{Type: "internal", Handler: "system_metrics"}},
 		{Name: "todo", Description: "Create and manage todos/reminders", Params: []ParamDefinition{
-			{Name: "action", Required: false},
-			{Name: "text", Required: false},
+			{Name: "action", Required: false, Default: "list"},
+			{Name: "text", Required: false, ExtractHint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"},
 		}, Action: PipelineAction{Type: "internal", Handler: "todo"}},
 	}
 }
