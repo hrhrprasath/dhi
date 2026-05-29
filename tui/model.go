@@ -80,6 +80,7 @@ type Model struct {
 	pipelineView viewport.Model
 	cpuProgress  progress.Model
 	ramProgress  progress.Model
+	gpuProgress  progress.Model
 
 	conversations []conversationEntry
 	logEntries    []string
@@ -126,12 +127,15 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 	cv.SetContent("Start a conversation...")
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
 
-	cp := progress.New()
+	cp := progress.New(progress.WithWidth(21))
 	cp.Empty = '░'
 	cp.Full = '█'
-	rp := progress.New()
+	rp := progress.New(progress.WithWidth(21))
 	rp.Empty = '░'
 	rp.Full = '█'
+	gp := progress.New(progress.WithWidth(21))
+	gp.Empty = '░'
+	gp.Full = '█'
 
 	metrics := sysSvc.GetMetrics()
 
@@ -156,6 +160,7 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 		pipelineView: pv,
 		cpuProgress: cp,
 		ramProgress: rp,
+		gpuProgress: gp,
 		focused:      focusInput,
 		pipelines:    statusPipelines,
 		routerStatus: "OFFLINE",
@@ -615,17 +620,13 @@ func (m *Model) renderMetrics() string {
 
 	cpuPct := m.metrics.CPU / 100.0
 	ramPct := float64(m.metrics.RAMUsedMB) / float64(max(int(m.metrics.RAMTotalMB), 1))
-
-	gpuLabel := m.metrics.GPU
-	if gpuLabel == "" {
-		gpuLabel = "Unknown"
-	}
+	gpuPct := m.metrics.GPUPercent / 100.0
 
 	content := fmt.Sprintf(
 		"CPU: %s\nRAM: %s\nGPU: %s\n%s %s",
 		m.cpuProgress.ViewAs(cpuPct),
 		m.ramProgress.ViewAs(ramPct),
-		gpuLabel,
+		m.gpuProgress.ViewAs(gpuPct),
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusDot),
 		lipgloss.NewStyle().Foreground(statusColor).Render("Ollama "+m.routerStatus),
 	)

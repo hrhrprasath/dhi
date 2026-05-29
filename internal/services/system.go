@@ -18,7 +18,7 @@ type SystemMetrics struct {
 	UptimeSec  uint64
 	Hostname   string
 	Kernel     string
-	GPU        string
+	GPUPercent float64
 }
 
 func NewSystemService() *SystemService {
@@ -46,21 +46,35 @@ func (s *SystemService) GetMetrics() SystemMetrics {
 		m.UptimeSec = hi.Uptime
 	}
 
-	m.GPU = getGPUInfo()
+	m.GPUPercent = getGPUPercent()
 	return m
 }
 
-func getGPUInfo() string {
-	out, err := exec.Command("system_profiler", "SPDisplaysDataType").Output()
+func getGPUPercent() float64 {
+	out, err := exec.Command("ioreg", "-l").Output()
 	if err != nil {
-		return ""
+		return 0
 	}
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "Chipset Model:") {
-			return strings.TrimSpace(strings.TrimPrefix(trimmed, "Chipset Model:"))
+	raw := string(out)
+	idx := strings.Index(raw, "Device Utilization %")
+	if idx < 0 {
+		return 0
+	}
+	// Find the number after '='
+	rest := raw[idx:]
+	eqIdx := strings.IndexByte(rest, '=')
+	if eqIdx < 0 {
+		return 0
+	}
+	var val float64
+	n := 0
+	for _, ch := range rest[eqIdx+1:] {
+		if ch >= '0' && ch <= '9' {
+			val = val*10 + float64(ch-'0')
+			n++
+		} else if n > 0 {
+			break
 		}
 	}
-	return ""
+	return val
 }
