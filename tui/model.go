@@ -3,6 +3,8 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -78,9 +80,12 @@ type Model struct {
 	logView      viewport.Model
 	convView     viewport.Model
 	pipelineView viewport.Model
+	orbView      viewport.Model
 	cpuProgress  progress.Model
 	ramProgress  progress.Model
 	gpuProgress  progress.Model
+
+	frame int
 
 	conversations []conversationEntry
 	logEntries    []string
@@ -123,6 +128,8 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 	cv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(8))
 	cv.SetContent("Start a conversation...")
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
+	ov := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
+	ov.SetContent("")
 	cp := progress.New(progress.WithWidth(21))
 	cp.Empty = '░'
 	cp.Full = '█'
@@ -153,6 +160,7 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 		logView:    lv,
 		convView:   cv,
 		pipelineView: pv,
+		orbView:     ov,
 		cpuProgress: cp,
 		ramProgress: rp,
 		gpuProgress: gp,
@@ -212,15 +220,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.convView.SetWidth(vw)
 		m.convView.SetHeight(ch)
 		m.textInput.SetWidth(rw - 16)
+		m.orbView.SetWidth(26)
+		m.orbView.SetHeight(m.orbHeight())
 		m.refreshLogContent()
+		m.refreshOrbContent()
 		return m, m.eventPoller()
 
 	case tickMsg:
+		m.frame++
 		m.uptimeSec++
 		m.inputCount = m.queueMgr.InputLen()
 		m.outputCount = m.queueMgr.OutputLen()
 		m.metrics = m.sysSvc.GetMetrics()
 		m.refreshLogContent()
+		m.refreshOrbContent()
 		return m, tea.Batch(
 			m.eventPoller(),
 			tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
@@ -599,6 +612,90 @@ func (m *Model) refreshPipelineContent() {
 	m.pipelineView.SetContent(sb.String())
 }
 
+func (m *Model) refreshOrbContent() {
+	h := m.orbView.Height()
+	if h < 3 {
+		m.orbView.SetContent("")
+		return
+	}
+	w := m.orbView.Width()
+
+	intensity := (m.metrics.CPU + float64(m.metrics.RAMUsedMB)/float64(max(int(m.metrics.RAMTotalMB), 1))*100 + m.metrics.GPUPercent) / 3.0
+	if intensity < 0 {
+		intensity = 0
+	}
+	if intensity > 100 {
+		intensity = 100
+	}
+	intensity /= 100.0
+
+	t := float64(m.frame) * 0.06
+
+	baseline := lipgloss.Color("#B86520")
+	fg := lipgloss.NewStyle().Foreground
+	var sb strings.Builder
+	for row := 0; row < h; row++ {
+		isBase := row == h-1
+		for col := 0; col < w; col++ {
+			if isBase {
+				sb.WriteString(fg(baseline).Render("▁"))
+				continue
+			}
+
+			x := float64(col) * 0.4
+			y := float64(row) * 0.3
+			v1 := math.Sin(x*1.7 + t*1.2 + y*0.5)
+			v2 := math.Sin(x*3.1 - t*0.8 + y*0.7)
+			v3 := math.Sin(x*0.9 + t*2.3 - y*1.1)
+			val := (v1 + v2 + v3) / 3.0
+			val = val*0.7 + 0.5
+
+			rowFactor := 0.2 + 0.8*(float64(row+1)/float64(h))
+			spike := val * intensity * rowFactor * 1.4
+			if spike < 0 {
+				spike = 0
+			}
+			if spike > 1 {
+				spike = 1
+			}
+
+			var ch string
+			switch {
+			case spike > 0.5:
+				ch = "█"
+			case spike > 0.3:
+				ch = "▓"
+			case spike > 0.15:
+				ch = "▒"
+			case spike > 0.05:
+				ch = "░"
+			default:
+				ch = " "
+			}
+
+			if ch == " " {
+				sb.WriteString(" ")
+				continue
+			}
+
+			r := int(220.0*spike + 35.0)
+			g := int(140.0*spike + 20.0)
+			b := int(40.0 * spike)
+			if intensity < 0.3 {
+				r = int(140.0 * spike)
+				g = int(80.0 * spike)
+				b = int(30.0 * spike)
+			}
+			colr := color.RGBA{R: uint8(min(r, 255)), G: uint8(min(g, 255)), B: uint8(min(b, 255)), A: 255}
+			sb.WriteString(fg(colr).Render(ch))
+		}
+		if row < h-1 {
+			sb.WriteString("\n")
+		}
+	}
+	m.orbView.SetContent(sb.String())
+}
+
 func (m *Model) render() string {
 	rw := m.rightWidth()
 
@@ -610,6 +707,8 @@ func (m *Model) render() string {
 		m.renderPipelinesBlock(),
 		"",
 		m.renderDHI(),
+		"",
+		m.renderOrbBlock(),
 	)
 
 	rightPanel := lipgloss.JoinVertical(lipgloss.Top,
@@ -681,6 +780,14 @@ func (m *Model) renderDHI() string {
 		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" DHI OS ") + "\n" +
 			lipgloss.NewStyle().Foreground(dimColor).Render(info),
 	)
+}
+
+func (m *Model) orbHeight() int {
+	return max(int(float64(m.height-31)*0.8), 3)
+}
+
+func (m *Model) renderOrbBlock() string {
+	return m.orbView.View()
 }
 
 func (m *Model) renderLogBlock(logW int) string {
