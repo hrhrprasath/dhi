@@ -4,7 +4,6 @@
 # - description: what it handles (keywords for LLM routing)
 # - params: parameters to extract
 # - action: what to execute
-# - summarizer: prompt for LLM to summarize output
 #
 # Action types:
 # - http: HTTP request (url, method, optional auth)
@@ -23,23 +22,36 @@ pipelines:
     action:
       type: bash
       script: "scripts/stock {company}"
-    summarizer:
-      prompt: "Summarize stock data into 2-3 sentences highlighting price, change, and key metrics."
 
-  - name: ollama_search
-    description: Web search (search, find, what is, how to, google)
+  - name: search_inline
+    description: Search web and display results in terminal (search, find, what is, how to, google)
     params:
       - name: query
         required: true
-      - name: count
-        required: false
-        default: 5
     action:
-      type: http
-      url: "https://duckduckgo.com/html/?q={query}"
-      method: GET
-    summarizer:
-      prompt: "Provide a brief summary of the top 3 search results."
+      type: bash
+      script: "scripts/search_inline {query}"
+
+  - name: search_browser
+    description: Open web search in default browser (search in browser, open youtube, open wikipedia, look up)
+    params:
+      - name: query
+        required: true
+      - name: provider
+        required: false
+        default: duckduckgo
+    action:
+      type: bash
+      script: "scripts/search_browser {provider} {query}"
+
+  - name: browse
+    description: Read a webpage content inline (read article, open page, fetch url, get website)
+    params:
+      - name: url
+        required: true
+    action:
+      type: bash
+      script: "scripts/browse {url}"
 
   - name: expense
     description: Expense tracking (expense, spent, bought, cost, price)
@@ -54,8 +66,6 @@ pipelines:
     action:
       type: internal
       handler: expense_log
-    summarizer:
-      prompt: "Confirm the expense was logged with amount and category."
 
   - name: health
     description: Health tracking (health, workout, exercise, steps, sleep)
@@ -68,23 +78,15 @@ pipelines:
     action:
       type: internal
       handler: health_tracker
-    summarizer:
-      prompt: "Provide a brief health summary with key metrics."
 
   - name: music
-    description: Music playback/search (play, song, music, podcast)
+    description: Music playback/search (play, song, music, podcast, spotify)
     params:
       - name: query
         required: true
-      - name: service
-        required: false
-        default: spotify
     action:
-      type: exec
-      command: "spotify-cli"
-      args: ["search", "{query}"]
-    summarizer:
-      prompt: "List the top 3 search results with song name and artist."
+      type: bash
+      script: "scripts/spotify {query}"
 
   - name: history
     description: Search past conversations/decisions (what did I, remember, earlier, before, past, decision, discussed, talked about)
@@ -100,8 +102,6 @@ pipelines:
     action:
       type: internal
       handler: memory_grep
-    summarizer:
-      prompt: "Synthesize findings using 3-level thought: (1) Direct matches with context, (2) Related concepts found in loop, (3) Timeline synthesis connecting past entries. Format as: [Direct Answer] + [Related Context] + [Timeline]"
 
   - name: conversation
     description: Continue/clarify existing conversation (continue, clarify, more, explain, earlier response)
@@ -113,5 +113,3 @@ pipelines:
     action:
       type: internal
       handler: conversation_continue
-    summarizer:
-      prompt: "Provide contextual continuation building on the previous exchange."

@@ -13,6 +13,7 @@ pub struct Pipeline {
     pub description: String,
     pub params: Vec<ParamDefinition>,
     pub action: PipelineAction,
+    #[serde(default)]
     pub summarizer: SummarizerConfig,
 }
 
@@ -54,16 +55,10 @@ pub struct HttpAuth {
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SummarizerConfig {
     #[serde(default)]
     pub prompt: String,
-}
-
-impl SummarizerConfig {
-    pub fn is_enabled(&self) -> bool {
-        !self.prompt.is_empty()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +67,7 @@ pub struct MatchedPipeline {
     pub params: HashMap<String, String>,
 }
 
+#[derive(Default)]
 pub struct PipelineManager {
     pipelines: Vec<Pipeline>,
 }
@@ -130,14 +126,6 @@ impl PipelineManager {
             .iter()
             .map(|p| (p.name.clone(), p.description.clone()))
             .collect()
-    }
-}
-
-impl Default for PipelineManager {
-    fn default() -> Self {
-        Self {
-            pipelines: Vec::new(),
-        }
     }
 }
 

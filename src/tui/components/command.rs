@@ -8,22 +8,18 @@ use ratatui::{
     Frame,
 };
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Default)]
 pub enum FocusPanel {
+    #[default]
     Logs,
     Command,
-}
-
-impl Default for FocusPanel {
-    fn default() -> Self {
-        FocusPanel::Logs
-    }
 }
 
 #[derive(Clone)]
 pub struct CommandState {
     pub scroll: u16,
     pub commands: Vec<String>,
+    pub conversations: Vec<(String, String)>,
 }
 
 impl CommandState {
@@ -31,11 +27,19 @@ impl CommandState {
         Self {
             scroll: 0,
             commands: Vec::new(),
+            conversations: Vec::new(),
         }
     }
 
     pub fn add_command(&mut self, cmd: String) {
         self.commands.push(cmd);
+    }
+
+    pub fn add_conversation(&mut self, user_input: String, response: String) {
+        self.conversations.push((user_input, response));
+        if self.conversations.len() > 50 {
+            self.conversations.remove(0);
+        }
     }
 }
 
@@ -121,6 +125,48 @@ pub fn render(f: &mut Frame, state: &AppState, area: Rect, focused: FocusPanel) 
                     Style::default().fg(Palette::TEXT_DIM),
                 )]));
             }
+        }
+    }
+
+    if !cmd_state.conversations.is_empty() {
+        all_lines.push(Line::from(Span::styled(
+            "───────────────────── Conversation ────────────────────",
+            Style::default().fg(Palette::TEXT_ACCENT),
+        )));
+
+        for (user_input, response) in cmd_state.conversations.iter().rev().take(5) {
+            let you_label = "You: ";
+            let you_wrapped = wrap_text(user_input, wrap_width.saturating_sub(you_label.len()));
+            for (i, line) in you_wrapped.iter().enumerate() {
+                if i == 0 {
+                    all_lines.push(Line::from(vec![
+                        Span::styled(you_label, Style::default().fg(Palette::TEXT)),
+                        Span::styled(line.clone(), Style::default().fg(Palette::TEXT_DIM)),
+                    ]));
+                } else {
+                    all_lines.push(Line::from(vec![Span::styled(
+                        format!("  {}", line),
+                        Style::default().fg(Palette::TEXT_DIM),
+                    )]));
+                }
+            }
+
+            let dhi_label = "DHI: ";
+            let dhi_wrapped = wrap_text(response, wrap_width.saturating_sub(dhi_label.len()));
+            for (i, line) in dhi_wrapped.iter().enumerate() {
+                if i == 0 {
+                    all_lines.push(Line::from(vec![
+                        Span::styled(dhi_label, Style::default().fg(Palette::TEXT_ACCENT)),
+                        Span::styled(line.clone(), Style::default().fg(Palette::TEXT)),
+                    ]));
+                } else {
+                    all_lines.push(Line::from(vec![Span::styled(
+                        format!("  {}", line),
+                        Style::default().fg(Palette::TEXT),
+                    )]));
+                }
+            }
+            all_lines.push(Line::from(""));
         }
     }
 

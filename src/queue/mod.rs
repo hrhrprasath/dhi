@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum QueueItemStatus {
     Pending,
@@ -26,6 +26,11 @@ pub struct InputQueueItem {
     pub raw_input: String,
     pub intent: Option<Intent>,
     pub status: QueueItemStatus,
+    #[serde(default)]
+    pub retry_count: u32,
+    pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub processing_started_at: Option<DateTime<Utc>>,
 }
 
 impl InputQueueItem {
@@ -35,6 +40,9 @@ impl InputQueueItem {
             raw_input,
             intent: None,
             status: QueueItemStatus::Pending,
+            retry_count: 0,
+            created_at: Utc::now(),
+            processing_started_at: None,
         }
     }
 
@@ -72,6 +80,7 @@ impl OutputQueueItem {
 pub struct QueueManager {
     data_dir: PathBuf,
     output_queue_path: PathBuf,
+    input_queue_path: PathBuf,
     input_queue: Vec<InputQueueItem>,
 }
 
@@ -85,10 +94,14 @@ impl QueueManager {
         let _ = fs::create_dir_all(&queue_dir);
         let _ = fs::create_dir_all(&data_dir);
 
+        let input_queue_path = queue_dir.join("input.json");
+        let input_queue: Vec<InputQueueItem> = Self::load_json(&input_queue_path);
+
         Ok(Self {
             data_dir,
             output_queue_path: queue_dir.join("output.json"),
-            input_queue: Vec::new(),
+            input_queue_path,
+            input_queue,
         })
     }
 
@@ -108,7 +121,61 @@ impl QueueManager {
     pub fn enqueue_input(&mut self, item: InputQueueItem) -> String {
         let id = item.id.clone();
         self.input_queue.push(item);
+        let _ = self.save_input_queue();
         id
+    }
+
+    pub fn dequeue_next_pending(&mut self) -> Option<InputQueueItem> {
+        let now = Utc::now();
+        let item = self.input_queue.iter_mut().find(|item| {
+            matches!(item.status, QueueItemStatus::Pending | QueueItemStatus::Failed)
+                && item.retry_count < 3
+        })?;
+
+        item.status = QueueItemStatus::Processing;
+        item.processing_started_at = Some(now);
+        let result = item.clone();
+        let _ = self.save_input_queue();
+        Some(result)
+    }
+
+    pub fn update_item(&mut self, item: &InputQueueItem) {
+        if let Some(existing) = self.input_queue.iter_mut().find(|i| i.id == item.id) {
+            *existing = item.clone();
+            let _ = self.save_input_queue();
+        }
+    }
+
+    pub fn recover_stale_items(&mut self) {
+        let now = Utc::now();
+        let timeout = chrono::Duration::seconds(60);
+        let mut recovered = 0;
+
+        for item in &mut self.input_queue {
+            if item.status == QueueItemStatus::Processing {
+                if let Some(started) = item.processing_started_at {
+                    if now.signed_duration_since(started) > timeout {
+                        item.status = QueueItemStatus::Pending;
+                        item.retry_count += 1;
+                        item.processing_started_at = None;
+                        recovered += 1;
+                    }
+                }
+            }
+        }
+
+        if recovered > 0 {
+            let _ = self.save_input_queue();
+        }
+    }
+
+    fn save_input_queue(&self) -> anyhow::Result<()> {
+        let mut queue = self.input_queue.clone();
+        queue.sort_by_key(|b| std::cmp::Reverse(b.created_at));
+        queue.truncate(100);
+        queue.reverse();
+        Self::save_json(&self.input_queue_path, &queue)?;
+        Ok(())
     }
 
     pub fn get_pending_inputs(&self) -> Vec<InputQueueItem> {
@@ -192,6 +259,7 @@ impl Default for QueueManager {
         Self {
             data_dir: PathBuf::from("./.data"),
             output_queue_path: PathBuf::from("./.data/queue/output.json"),
+            input_queue_path: PathBuf::from("./.data/queue/input.json"),
             input_queue: Vec::new(),
         }
     }

@@ -1,0 +1,3 @@
+#!/bin/bash
+q=$(printf '%s' "$*" | jq -sRr @uri)
+w3m -dump "https://lite.duckduckgo.com/lite/?q=$q"

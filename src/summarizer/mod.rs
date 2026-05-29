@@ -1,11 +1,9 @@
 use crate::prompt::synthesis_prompt;
 
-const OLLAMA_BASE_URL: &str = "http://localhost:11434";
-const DEFAULT_MODEL: &str = "qwen2.5:1.5b";
-
 pub struct Summarizer {
     client: reqwest::Client,
     model: String,
+    endpoint: String,
 }
 
 impl Clone for Summarizer {
@@ -13,32 +11,28 @@ impl Clone for Summarizer {
         Self {
             client: reqwest::Client::new(),
             model: self.model.clone(),
+            endpoint: self.endpoint.clone(),
         }
     }
 }
 
 impl Summarizer {
-    pub fn new() -> Self {
-        Self {
-            client: reqwest::Client::new(),
-            model: DEFAULT_MODEL.to_string(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn with_model(model: String) -> Self {
+    pub fn new(model: String, endpoint: String) -> Self {
         Self {
             client: reqwest::Client::new(),
             model,
+            endpoint,
         }
     }
 
-    pub async fn summarize(&self, raw_data: &str, pipeline: &str, custom_prompt: Option<&str>) -> String {
-        let prompt = if let Some(custom) = custom_prompt {
-            format!("{}\n\nRaw data:\n{}\n\nSummary:", custom, raw_data)
-        } else {
-            synthesis_prompt(raw_data, pipeline)
-        };
+    pub async fn summarize(
+        &self,
+        raw_data: &str,
+        pipeline: &str,
+        user_input: &str,
+        conversation_context: &str,
+    ) -> String {
+        let prompt = synthesis_prompt(raw_data, pipeline, user_input, conversation_context);
 
         let request = serde_json::json!({
             "model": self.model,
@@ -47,7 +41,7 @@ impl Summarizer {
         });
 
         match self.client
-            .post(format!("{}/api/generate", OLLAMA_BASE_URL))
+            .post(format!("{}/api/generate", self.endpoint))
             .json(&request)
             .send()
             .await
@@ -73,6 +67,9 @@ struct OllamaResponse {
 
 impl Default for Summarizer {
     fn default() -> Self {
-        Self::new()
+        Self::new(
+            "qwen2.5:1.5b".to_string(),
+            "http://localhost:11434".to_string(),
+        )
     }
 }

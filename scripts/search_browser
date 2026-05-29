@@ -1,0 +1,7 @@
+#!/bin/bash
+provider="duckduckgo"
+if [ $# -ge 2 ]; then
+    provider="$1"
+    shift
+fi
+s --provider "$provider" "$*"

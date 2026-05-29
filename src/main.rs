@@ -1,3 +1,5 @@
+mod config;
+mod conversation;
 mod intent;
 mod pipeline;
 mod prompt;
@@ -7,6 +9,7 @@ mod summarizer;
 mod tui;
 
 use anyhow::Result;
+use conversation::{ConversationManager, extract_search_terms};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode},
     execute,
@@ -22,7 +25,7 @@ use tokio::sync::{broadcast, mpsc, Mutex as TokioMutex};
 
 use intent::{IntentRouter, ParsedIntent};
 use pipeline::PipelineExecutor;
-use queue::{OutputQueueItem, QueueManager};
+use queue::{InputQueueItem, Intent, OutputQueueItem, QueueManager, QueueItemStatus};
 use services::{Logger, OllamaService, SystemService};
 use tui::components::command::{CommandState, FocusPanel};
 use tui::components::logs::LogState;
@@ -36,6 +39,7 @@ pub enum SystemEvent {
     IntentError(String),
     RouterOnline,
     RouterOffline,
+    ConversationResponse { input: String, response: String },
 }
 
 pub struct AppState {
@@ -67,7 +71,7 @@ pub struct AppState {
     pub system_hostname: String,
     pub system_kernel: String,
     pub weather_info: String,
-    pub pipeline_executor: PipelineExecutor,
+    pub pipeline_executor: Arc<PipelineExecutor>,
     pub last_ollama_check: u64,
 }
 
@@ -77,10 +81,12 @@ unsafe impl Sync for AppState {}
 impl AppState {
     #[allow(dead_code)]
     fn new() -> Self {
+        let llm = config::Config::load().llm;
         Self::new_with_logger(
             Arc::new(Logger::new()),
             Arc::new(StdMutex::new(LogState::new())),
             Arc::new(StdMutex::new(CommandState::new())),
+            Arc::new(PipelineExecutor::new(Some("config/pipelines.yaml"), &llm)),
         )
     }
 
@@ -88,25 +94,41 @@ impl AppState {
         logger: Arc<Logger>,
         log_state: Arc<StdMutex<LogState>>,
         cmd_state: Arc<StdMutex<CommandState>>,
+        pipeline_executor: Arc<PipelineExecutor>,
     ) -> Self {
         let system_service = SystemService::new();
         let metrics = system_service.get_metrics();
 
         let queue_manager = QueueManager::new().unwrap_or_default();
-        
-        let output_history = queue_manager.get_recent_outputs(50);
-        logger.info("SYSTEM", &format!("Loaded {} outputs from queue", output_history.len()));
-        logger.info("SYSTEM", &format!("DHI Harness v{} booting...", env!("CARGO_PKG_VERSION")));
 
-        let pipeline_executor = PipelineExecutor::new(Some("config/pipelines.yaml"));
+        let output_history = queue_manager.get_recent_outputs(50);
+        logger.info(
+            "SYSTEM",
+            format!("Loaded {} outputs from queue", output_history.len()),
+        );
+        logger.info(
+            "SYSTEM",
+            format!("DHI Harness v{} booting...", env!("CARGO_PKG_VERSION")),
+        );
+
         let pipelines = pipeline_executor.list_pipelines();
-        logger.info("SYSTEM", &format!("Loaded {} pipelines: {:?}", pipelines.len(), pipelines.iter().map(|(n,_)| n).collect::<Vec<_>>()));
+        logger.info(
+            "SYSTEM",
+            format!(
+                "Loaded {} pipelines: {:?}",
+                pipelines.len(),
+                pipelines.iter().map(|(n, _)| n).collect::<Vec<_>>()
+            ),
+        );
 
         Self {
             should_quit: false,
             input_buffer: String::new(),
             logs: vec![
-                format!("[SYSTEM] Booting DHI Harness v{}...", env!("CARGO_PKG_VERSION")),
+                format!(
+                    "[SYSTEM] Booting DHI Harness v{}...",
+                    env!("CARGO_PKG_VERSION")
+                ),
                 format!("[SYSTEM] Loaded {} pipelines", pipelines.len()),
             ],
             cpu_usage: metrics.cpu_usage,
@@ -170,7 +192,7 @@ async fn main() -> Result<()> {
                     log_state.add_log(entry);
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
-                    let _ = logger_clone.warn("LOGGER", format!("Missed {} logs", n));
+                    logger_clone.warn("LOGGER", format!("Missed {} logs", n));
                 }
                 Err(broadcast::error::RecvError::Closed) => {
                     break;
@@ -179,9 +201,28 @@ async fn main() -> Result<()> {
         }
     });
 
-    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(logger.clone(), log_state, cmd_state)));
+    let cfg = config::Config::load();
+    logger.info(
+        "CONFIG",
+        format!("LLM endpoint: {} | model: {}", cfg.llm.endpoint, cfg.llm.model),
+    );
 
-    let router = Arc::new(TokioMutex::new(IntentRouter::new(None, logger.clone())));
+    let pipeline_executor = Arc::new(PipelineExecutor::new(
+        Some("config/pipelines.yaml"),
+        &cfg.llm,
+    ));
+    let app_state = Arc::new(TokioMutex::new(AppState::new_with_logger(
+        logger.clone(),
+        log_state,
+        cmd_state,
+        pipeline_executor.clone(),
+    )));
+
+    let router = Arc::new(TokioMutex::new(IntentRouter::new(
+        cfg.llm.model.clone(),
+        cfg.llm.endpoint.clone(),
+        logger.clone(),
+    )));
 
     let tick_rate = Duration::from_millis(250);
     let tx_input = tx.clone();
@@ -218,17 +259,220 @@ async fn main() -> Result<()> {
         } else {
             logger_for_health.warn("ROUTER", "Ollama not available at localhost:11434");
             let _ = tx_health
-                .send(SystemEvent::IntentError("Ollama not available at localhost:11434".to_string()))
+                .send(SystemEvent::IntentError(
+                    "Ollama not available at localhost:11434".to_string(),
+                ))
                 .await;
         }
     });
 
-    let tx_pipeline = tx.clone();
+    let tx_startup = tx.clone();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(2)).await;
-        let _ = tx_pipeline
-            .send(SystemEvent::SystemLog("[SYNTH] NVIDIA NIM API ready (Phase 4)".to_string()))
+        let _ = tx_startup
+            .send(SystemEvent::SystemLog(
+                "[SYNTH] NVIDIA NIM API ready (Phase 4)".to_string(),
+            ))
             .await;
+    });
+
+    let consumer_qm = app_state.lock().await.queue_manager.clone();
+    let consumer_router = router.clone();
+    let consumer_executor = pipeline_executor.clone();
+    let consumer_logger = logger.clone();
+    let consumer_tx = tx.clone();
+    tokio::spawn(async move {
+        let conv_mgr = ConversationManager::new();
+
+        {
+            let mut qm = consumer_qm.lock().await;
+            qm.recover_stale_items();
+            consumer_logger.info(
+                "CONSUMER",
+                format!("Queue has {} items pending", qm.input_queue_len()),
+            );
+        }
+
+        loop {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+
+            let mut item = {
+                let mut qm = consumer_qm.lock().await;
+                qm.dequeue_next_pending()
+            };
+
+            let Some(ref mut item) = item else { continue; };
+
+            if item.retry_count >= 3 {
+                consumer_logger.error(
+                    "CONSUMER",
+                    format!("Item {} exceeded max retries. Dropping.", item.id),
+                );
+                item.status = QueueItemStatus::Failed;
+                consumer_qm.lock().await.update_item(item);
+                continue;
+            }
+
+            let summary = conv_mgr.load_summary();
+            let summary_text = conv_mgr.format_for_prompt(&summary);
+
+            consumer_logger.info(
+                "CONSUMER",
+                format!("Classifying: {}", item.raw_input),
+            );
+
+            let intent = match consumer_router
+                .lock()
+                .await
+                .route(&item.raw_input, &summary_text)
+                .await
+            {
+                Ok(i) => i,
+                Err(e) => {
+                    consumer_logger
+                        .error("CONSUMER", format!("Classify failed: {}. Item requeued.", e));
+                    item.retry_count += 1;
+                    item.status = QueueItemStatus::Pending;
+                    item.processing_started_at = None;
+                    consumer_qm.lock().await.update_item(item);
+                    continue;
+                }
+            };
+
+            if intent.event == "CONVERSATION" {
+                consumer_logger.info("CONSUMER", "Intent: CONVERSATION");
+
+                let terms = extract_search_terms(&intent.params);
+                let search_results = if !terms.is_empty() {
+                    consumer_logger
+                        .info("CONSUMER", format!("Searching past data for: {:?}", terms));
+                    ConversationManager::search_past_data(&terms).await
+                } else {
+                    String::new()
+                };
+
+                if !search_results.is_empty() {
+                    consumer_logger.info(
+                        "CONSUMER",
+                        format!("Found {} chars of past data", search_results.len()),
+                    );
+                }
+
+                let response = match consumer_router
+                    .lock()
+                    .await
+                    .chat(&item.raw_input, &summary_text, &search_results)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        consumer_logger
+                            .error("CONSUMER", format!("Chat generation failed: {}", e));
+                        item.status = QueueItemStatus::Failed;
+                        consumer_qm.lock().await.update_item(item);
+                        continue;
+                    }
+                };
+
+                conv_mgr.update_summary(&item.raw_input, &response);
+
+                consumer_logger.info(
+                    "CONSUMER",
+                    format!(
+                        "Conversation response: {} chars",
+                        response.len()
+                    ),
+                );
+
+                let _ = consumer_tx
+                    .send(SystemEvent::ConversationResponse {
+                        input: item.raw_input.clone(),
+                        response: response.clone(),
+                    })
+                    .await;
+
+                item.status = QueueItemStatus::Completed;
+                consumer_qm.lock().await.update_item(item);
+            } else {
+                consumer_logger.info(
+                    "CONSUMER",
+                    format!("Intent: {} — spawning pipeline", intent.event),
+                );
+
+                let pipeline_event = intent.event.clone();
+                let pipeline_params = intent.params.clone();
+                let raw_input = item.raw_input.clone();
+                let conv_ctx = summary_text.clone();
+                let exec = consumer_executor.clone();
+                let qm = consumer_qm.clone();
+                let logger = consumer_logger.clone();
+                let tx_pipe = consumer_tx.clone();
+
+                item.intent = Some(Intent {
+                    pipeline: pipeline_event
+                        .trim_start_matches("EXECUTE_")
+                        .to_lowercase(),
+                    action: pipeline_event.clone(),
+                    params: pipeline_params.clone(),
+                });
+                item.status = QueueItemStatus::Completed;
+                consumer_qm.lock().await.update_item(item);
+
+                tokio::spawn(async move {
+                    let conv_mgr = ConversationManager::new();
+                    logger.info(
+                        "EXECUTOR",
+                        format!("Executing pipeline: {}", pipeline_event),
+                    );
+                    let result = exec.find_and_execute(
+                        &pipeline_event,
+                        &pipeline_params,
+                        &raw_input,
+                        &conv_ctx,
+                    );
+                    match result {
+                        Ok(summary) => {
+                            logger.info(
+                                "EXECUTOR",
+                                format!(
+                                    "Pipeline {} result: {}",
+                                    pipeline_event,
+                                    &summary[..summary.len().min(200)]
+                                ),
+                            );
+                            let _ = tx_pipe
+                                .send(SystemEvent::ConversationResponse {
+                                    input: raw_input.clone(),
+                                    response: summary.clone(),
+                                })
+                                .await;
+                            conv_mgr.update_summary(&raw_input, &summary);
+                            let output = OutputQueueItem::new(
+                                pipeline_event.clone(),
+                                "input_id".to_string(),
+                                summary.clone(),
+                                summary,
+                            );
+                            if let Ok(qm) = qm.try_lock() {
+                                let _ = qm.enqueue_output(output);
+                            }
+                        }
+                        Err(e) => {
+                            logger.error(
+                                "EXECUTOR",
+                                format!("Pipeline {} FAILED: {}", pipeline_event, e),
+                            );
+                            let _ = tx_pipe
+                                .send(SystemEvent::SystemLog(format!(
+                                    "[EXECUTOR] Pipeline {} FAILED: {}",
+                                    pipeline_event, e
+                                )))
+                                .await;
+                        }
+                    }
+                });
+            }
+        }
     });
 
     loop {
@@ -238,7 +482,9 @@ async fn main() -> Result<()> {
         if let Some(event) = rx.recv().await {
             match event {
                 SystemEvent::Input(key) => match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
+                    KeyCode::Char('c')
+                        if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
+                    {
                         state.should_quit = true;
                     }
                     KeyCode::Tab => {
@@ -247,19 +493,17 @@ async fn main() -> Result<()> {
                             FocusPanel::Command => FocusPanel::Logs,
                         };
                     }
-                    KeyCode::Up => {
-                        match state.focused_panel {
-                            FocusPanel::Logs => {
-                                let mut log_state = state.log_state.lock().unwrap();
-                                log_state.scroll = log_state.scroll.saturating_sub(1);
-                            }
-                            FocusPanel::Command => {
-                                let mut cmd_state = state.cmd_state.lock().unwrap();
-                                let max_scroll = cmd_state.scroll.saturating_sub(1);
-                                cmd_state.scroll = max_scroll;
-                            }
+                    KeyCode::Up => match state.focused_panel {
+                        FocusPanel::Logs => {
+                            let mut log_state = state.log_state.lock().unwrap();
+                            log_state.scroll = log_state.scroll.saturating_sub(1);
                         }
-                    }
+                        FocusPanel::Command => {
+                            let mut cmd_state = state.cmd_state.lock().unwrap();
+                            let max_scroll = cmd_state.scroll.saturating_sub(1);
+                            cmd_state.scroll = max_scroll;
+                        }
+                    },
                     KeyCode::Down => {
                         let visible_lines = 10;
                         match state.focused_panel {
@@ -288,28 +532,17 @@ async fn main() -> Result<()> {
                         if cmd == "quit" || cmd == "exit" {
                             state.should_quit = true;
                         } else if state.router_online {
-                            state.logs.push(format!("[DEBUG] Sending '{}' to Intent Router...", cmd));
-                            let tx_intent = tx.clone();
-                            let tx_log = tx.clone();
-                            let cmd_clone = cmd.clone();
-                            let router_clone = router.clone();
-                            tokio::spawn(async move {
-                                let r = router_clone.lock().await;
-                                match r.route(&cmd_clone).await {
-                                    Ok(intent) => {
-                                        let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Intent parsed: event={}, params={:?}", intent.event, intent.params))).await;
-                                        let _ = tx_intent.send(SystemEvent::IntentResult { intent }).await;
-                                    }
-                                    Err(e) => {
-                                        let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Intent Router error: {}", e))).await;
-                                        let _ = tx_intent
-                                            .send(SystemEvent::IntentError(e.to_string()))
-                                            .await;
-                                    }
-                                }
-                            });
+                            let item = InputQueueItem::new(cmd);
+                            let len = {
+                                let mut qm = state.queue_manager.lock().await;
+                                qm.enqueue_input(item);
+                                qm.input_queue_len()
+                            };
+                            state.input_queue_count = len;
                         } else {
-                            state.logs.push("[DEBUG] Router offline, cannot process input".to_string());
+                            state
+                                .logs
+                                .push("[DEBUG] Router offline, cannot process input".to_string());
                         }
                     }
                     _ => {}
@@ -321,25 +554,42 @@ async fn main() -> Result<()> {
                     }
                 }
                 SystemEvent::IntentResult { intent } => {
-                    state.logs.push(format!("[ROUTER] Intent -> {} | Params: {:?}", intent.event, intent.params));
+                    state
+                        .logs
+                        .push(format!("[ROUTER] Intent -> {} | Params: {:?}", intent.event, intent.params));
                     state.router_online = true;
                     state.router_status = "PROCESSING".to_string();
-                    state.logger.info("EXECUTOR", &format!("Starting pipeline: {} with params {:?}", intent.event, intent.params));
-                    
+                    state.logger.info(
+                        "EXECUTOR",
+                        format!("Starting pipeline: {} with params {:?}", intent.event, intent.params),
+                    );
+
                     let executor = state.pipeline_executor.clone();
                     let event = intent.event.clone();
                     let params = intent.params.clone();
                     let qm = state.queue_manager.clone();
                     let logger = state.logger.clone();
                     let tx_log = tx.clone();
-                    
+
                     tokio::spawn(async move {
-                        logger.info("EXECUTOR", &format!("Executing pipeline: {}", event));
-                        let result = executor.find_and_execute(&event, &params);
+                        logger.info("EXECUTOR", format!("Executing pipeline: {}", event));
+                        let result = executor.find_and_execute(&event, &params, "", "");
                         match result {
                             Ok(summary) => {
-                                logger.info("EXECUTOR", &format!("Pipeline {} result: {}", event, &summary[..summary.len().min(200)]));
-                                let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Pipeline {} completed", event))).await;
+                                logger.info(
+                                    "EXECUTOR",
+                                    format!(
+                                        "Pipeline {} result: {}",
+                                        event,
+                                        &summary[..summary.len().min(200)]
+                                    ),
+                                );
+                                let _ = tx_log
+                                    .send(SystemEvent::SystemLog(format!(
+                                        "[DEBUG] Pipeline {} completed",
+                                        event
+                                    )))
+                                    .await;
                                 let output = OutputQueueItem::new(
                                     event.clone(),
                                     "input_id".to_string(),
@@ -351,16 +601,22 @@ async fn main() -> Result<()> {
                                 }
                             }
                             Err(e) => {
-                                logger.error("EXECUTOR", &format!("Pipeline {} FAILED: {}", event, e));
-                                let _ = tx_log.send(SystemEvent::SystemLog(format!("[DEBUG] Pipeline {} FAILED: {}", event, e))).await;
+                                logger.error(
+                                    "EXECUTOR",
+                                    format!("Pipeline {} FAILED: {}", event, e),
+                                );
+                                let _ = tx_log
+                                    .send(SystemEvent::SystemLog(format!(
+                                        "[DEBUG] Pipeline {} FAILED: {}",
+                                        event, e
+                                    )))
+                                    .await;
                             }
                         }
                     });
                 }
                 SystemEvent::IntentError(err) => {
-                    state
-                        .logs
-                        .push(format!("[ROUTER ERROR] {}", err));
+                    state.logs.push(format!("[ROUTER ERROR] {}", err));
                     state.router_online = false;
                     state.router_status = "OFFLINE".to_string();
                 }
@@ -380,6 +636,10 @@ async fn main() -> Result<()> {
                             .push("[ROUTER] Ollama Intent Router OFFLINE".to_string());
                     }
                 }
+                SystemEvent::ConversationResponse { input, response } => {
+                    state.logs.push(format!("[DHI] {}", response));
+                    state.cmd_state.lock().unwrap().add_conversation(input, response);
+                }
                 SystemEvent::Tick => {
                     state.system_service.refresh();
                     let metrics = state.system_service.get_metrics();
@@ -389,7 +649,7 @@ async fn main() -> Result<()> {
                     state.system_hostname = metrics.hostname;
                     state.system_kernel = metrics.kernel;
                     state.weather_info = metrics.weather;
-                    
+
                     if metrics.uptime_secs.saturating_sub(state.last_ollama_check) > 30 {
                         state.last_ollama_check = metrics.uptime_secs;
                         let router = state.ollama_service.clone();
@@ -425,7 +685,11 @@ async fn main() -> Result<()> {
     }
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
     terminal.show_cursor()?;
     Ok(())
 }

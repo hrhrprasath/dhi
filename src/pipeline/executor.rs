@@ -1,3 +1,4 @@
+use crate::config::LlmConfig;
 use crate::pipeline::handlers::Handlers;
 use crate::pipeline::{MatchedPipeline, PipelineManager};
 use crate::summarizer::Summarizer;
@@ -11,7 +12,7 @@ pub struct PipelineExecutor {
 }
 
 impl PipelineExecutor {
-    pub fn new(pipeline_config_path: Option<&str>) -> Self {
+    pub fn new(pipeline_config_path: Option<&str>, llm_config: &LlmConfig) -> Self {
         let config_path = pipeline_config_path.unwrap_or("config/pipelines.yaml");
         let pipeline_manager = PipelineManager::load_from_file(&std::path::PathBuf::from(
             config_path,
@@ -23,7 +24,7 @@ impl PipelineExecutor {
 
         Self {
             pipeline_manager,
-            summarizer: Summarizer::new(),
+            summarizer: Summarizer::new(llm_config.model.clone(), llm_config.endpoint.clone()),
         }
     }
 
@@ -31,6 +32,8 @@ impl PipelineExecutor {
         &self,
         event: &str,
         params: &Option<serde_json::Value>,
+        user_input: &str,
+        conversation_context: &str,
     ) -> Result<String> {
         let pipeline_name = self.event_to_pipeline(event);
 
@@ -48,7 +51,7 @@ impl PipelineExecutor {
                 return Ok(format!("Parameter validation failed: {}", e));
             }
 
-            self.execute_pipeline_with_params(pipeline, &params_with_defaults)
+            self.execute_pipeline_with_params(pipeline, &params_with_defaults, user_input, conversation_context)
         } else {
             self.execute_unknown_fallback()
         }
@@ -57,16 +60,20 @@ impl PipelineExecutor {
     pub fn execute_from_matched(
         &self,
         matched: &MatchedPipeline,
-        _user_input: &str,
+        user_input: &str,
     ) -> Result<String> {
-        self.execute_pipeline_sync(&matched.pipeline)
+        let output = self.execute_pipeline_sync(&matched.pipeline)?;
+        if output.is_empty() {
+            return Ok(output);
+        }
+        Ok(self.synthesize_output(&output, &matched.pipeline.name, user_input, ""))
     }
 
     fn event_to_pipeline(&self, event: &str) -> String {
         let upper = event.to_uppercase();
 
         if upper == "UNKNOWN" {
-            return "ollama_search".to_string();
+            return "search_inline".to_string();
         }
 
         if let Some(stripped) = upper.strip_prefix("EXECUTE_") {
@@ -76,7 +83,7 @@ impl PipelineExecutor {
             }
         }
 
-        "ollama_search".to_string()
+        "search_inline".to_string()
     }
 
     fn extract_params_from_json(
@@ -104,7 +111,7 @@ impl PipelineExecutor {
         let valid_names: std::collections::HashSet<String> =
             param_defs.iter().map(|d| d.name.clone()).collect();
 
-        for (key, _) in params {
+        for key in params.keys() {
             if !valid_names.contains(key) {
                 return Err(format!(
                     "Invalid parameter '{}'. Expected one of: {:?}",
@@ -130,78 +137,66 @@ impl PipelineExecutor {
         &self,
         pipeline: &crate::pipeline::Pipeline,
         params: &HashMap<String, String>,
+        user_input: &str,
+        conversation_context: &str,
     ) -> Result<String> {
         use crate::pipeline::PipelineAction;
 
-        if let PipelineAction::Http { url, method, auth } = &pipeline.action {
-            let resolved_url = self.interpolate_params(url, params);
-            let resolved_method = self.interpolate_params(method, params);
-            let auth_header = auth.as_ref().map(|a| {
-                let h = self.interpolate_params(&a.header, params);
-                let v = self.interpolate_params(&a.value, params);
-                (h, v)
-            });
-            let output = self.execute_http(&resolved_url, &resolved_method, auth_header);
-            if pipeline.summarizer.is_enabled() && !output.is_empty() {
-                let summary = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(self.summarizer.summarize(
-                        &output,
-                        &pipeline.name,
-                        Some(&pipeline.summarizer.prompt),
-                    ))
+        let output = match &pipeline.action {
+            PipelineAction::Http { url, method, auth } => {
+                let resolved_url = self.interpolate_params(url, params);
+                let resolved_method = self.interpolate_params(method, params);
+                let auth_header = auth.as_ref().map(|a| {
+                    let h = self.interpolate_params(&a.header, params);
+                    let v = self.interpolate_params(&a.value, params);
+                    (h, v)
                 });
-                return Ok(summary);
+                self.execute_http(&resolved_url, &resolved_method, auth_header)
             }
-            return Ok(output);
-        }
-
-        if let PipelineAction::Exec { command, args } = &pipeline.action {
-            let resolved_command = self.interpolate_params(command, params);
-            let resolved_args: Vec<String> = args
-                .iter()
-                .map(|a| self.interpolate_params(a, params))
-                .collect();
-            let output = self.execute_exec(&resolved_command, &resolved_args);
-            if pipeline.summarizer.is_enabled() && !output.is_empty() {
-                let summary = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(self.summarizer.summarize(
-                        &output,
-                        &pipeline.name,
-                        Some(&pipeline.summarizer.prompt),
-                    ))
-                });
-                return Ok(summary);
+            PipelineAction::Exec { command, args } => {
+                let resolved_command = self.interpolate_params(command, params);
+                let resolved_args: Vec<String> = args
+                    .iter()
+                    .map(|a| self.interpolate_params(a, params))
+                    .collect();
+                self.execute_exec(&resolved_command, &resolved_args)
             }
-            return Ok(output);
-        }
-
-        if let PipelineAction::Bash { script } = &pipeline.action {
-            let resolved_script = self.interpolate_params(script, params);
-            let output = self.execute_bash(&resolved_script);
-            if pipeline.summarizer.is_enabled() && !output.is_empty() {
-                let summary = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(self.summarizer.summarize(
-                        &output,
-                        &pipeline.name,
-                        Some(&pipeline.summarizer.prompt),
-                    ))
-                });
-                return Ok(summary);
+            PipelineAction::Bash { script } => {
+                let resolved_script = self.interpolate_params(script, params);
+                self.execute_bash(&resolved_script)
             }
+            PipelineAction::Open { target } => {
+                let resolved_target = self.interpolate_params(target, params);
+                return Ok(self.execute_open(&resolved_target));
+            }
+            PipelineAction::Internal { handler } => {
+                self.execute_internal_with_params(handler, params)?
+            }
+        };
+
+        if output.is_empty() {
             return Ok(output);
         }
 
-        if let PipelineAction::Open { target } = &pipeline.action {
-            let resolved_target = self.interpolate_params(target, params);
-            let output = self.execute_open(&resolved_target);
-            return Ok(output);
-        }
+        Ok(self.synthesize_output(&output, &pipeline.name, user_input, conversation_context))
+    }
 
-        if let PipelineAction::Internal { handler } = &pipeline.action {
-            return self.execute_internal_with_params(handler, params);
+    fn synthesize_output(
+        &self,
+        raw: &str,
+        pipeline: &str,
+        user_input: &str,
+        conversation_context: &str,
+    ) -> String {
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| {
+                handle.block_on(
+                    self.summarizer
+                        .summarize(raw, pipeline, user_input, conversation_context),
+                )
+            }),
+            Err(_) => raw.to_string(),
         }
-
-        Ok("Unknown action type".to_string())
     }
 
     fn interpolate_params(&self, template: &str, params: &HashMap<String, String>) -> String {
@@ -272,18 +267,11 @@ impl PipelineExecutor {
             PipelineAction::Internal { handler } => self.execute_internal(handler),
         };
 
-        if pipeline.summarizer.is_enabled() && !raw_output.is_empty() {
-            let summary = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(self.summarizer.summarize(
-                    &raw_output,
-                    &pipeline.name,
-                    Some(&pipeline.summarizer.prompt),
-                ))
-            });
-            Ok(summary)
-        } else {
-            Ok(raw_output)
+        if raw_output.is_empty() {
+            return Ok(raw_output);
         }
+
+        Ok(self.synthesize_output(&raw_output, &pipeline.name, "", ""))
     }
 
     fn execute_http(&self, url: &str, method: &str, auth: Option<(String, String)>) -> String {
@@ -392,7 +380,7 @@ impl PipelineExecutor {
 
 impl Default for PipelineExecutor {
     fn default() -> Self {
-        Self::new(None)
+        Self::new(None, &LlmConfig::default())
     }
 }
 
@@ -400,35 +388,40 @@ impl Default for PipelineExecutor {
 mod tests {
     use super::*;
 
+    fn test_executor() -> PipelineExecutor {
+        let llm = LlmConfig::default();
+        PipelineExecutor::new(Some("config/pipelines.yaml"), &llm)
+    }
+
     #[test]
     fn test_execute_expense() {
-        let executor = PipelineExecutor::new(Some("config/pipelines.yaml"));
+        let executor = test_executor();
         let params = serde_json::json!({"amount": "50.00", "category": "food"});
-        let result = executor.find_and_execute("EXECUTE_EXPENSE", &Some(params));
+        let result = executor.find_and_execute("EXECUTE_EXPENSE", &Some(params), "", "");
         println!("Expense result: {:?}", result);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_execute_health() {
-        let executor = PipelineExecutor::new(Some("config/pipelines.yaml"));
-        let result = executor.find_and_execute("EXECUTE_HEALTH", &None);
+        let executor = test_executor();
+        let result = executor.find_and_execute("EXECUTE_HEALTH", &None, "", "");
         println!("Health result: {:?}", result);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_execute_history() {
-        let executor = PipelineExecutor::new(Some("config/pipelines.yaml"));
+        let executor = test_executor();
         let params = serde_json::json!({"query": "test", "depth": "1"});
-        let result = executor.find_and_execute("EXECUTE_HISTORY", &Some(params));
+        let result = executor.find_and_execute("EXECUTE_HISTORY", &Some(params), "", "");
         println!("History result: {:?}", result);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_all_pipeline_names() {
-        let executor = PipelineExecutor::new(Some("config/pipelines.yaml"));
+        let executor = test_executor();
         let pipelines = executor.list_pipelines();
         println!("Available pipelines: {:?}", pipelines);
         assert!(pipelines.len() >= 7);

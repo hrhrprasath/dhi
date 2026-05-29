@@ -52,8 +52,8 @@ Uptime: {} seconds"#,
     pub fn health_tracker(action: &str, metric: &str) -> String {
         match action {
             "log" => format!("Health metric '{}' logged", metric),
-            "check" => format!("Current health status: Good (mock data)"),
-            "summary" => format!("Today's steps: 8500, Sleep: 7.2h, Workouts: 1"),
+            "check" => "Current health status: Good (mock data)".to_string(),
+            "summary" => "Today's steps: 8500, Sleep: 7.2h, Workouts: 1".to_string(),
             _ => format!("Health action '{}' completed", action),
         }
     }
@@ -131,10 +131,8 @@ Start your day productive!"#,
         let depth_level: usize = depth.parse().unwrap_or(1);
 
         if !vault_path.exists() {
-            return format!(
-                "Vault not found at ./vault. Create a markdown directory for memory storage.\n\
-                 Usage: Create ./vault/history/*.md files with your conversations and decisions."
-            );
+            return "Vault not found at ./vault. Create a markdown directory for memory storage.\n\
+                 Usage: Create ./vault/history/*.md files with your conversations and decisions.".to_string();
         }
 
         let mut results = Vec::new();

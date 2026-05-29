@@ -1,0 +1,28 @@
+#!/bin/bash
+
+q=$(printf '%s' "$*" | jq -sRr @uri)
+
+case "$(uname)" in
+  Darwin)
+    open "spotify:search:$q"
+    sleep 2
+    osascript <<'EOF'
+tell application "Spotify" to activate
+tell application "System Events"
+    key code 48
+    delay 0.2
+    key code 125
+    delay 0.2
+    key code 125
+    delay 0.2
+    key code 36
+end tell
+EOF
+    ;;
+  Linux)
+    xdg-open "spotify:search:$q"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    start "spotify:search:$q"
+    ;;
+esac
