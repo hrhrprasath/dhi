@@ -446,7 +446,8 @@ func (m *Model) processQueue() {
 		return
 	}
 
-	if !strings.HasPrefix(intentResult.Event, "EXECUTE_") {
+	if intentResult.Confidence < 0.8 || !strings.HasPrefix(intentResult.Event, "EXECUTE_") {
+		m.logger.Info("CONSUMER", fmt.Sprintf("Confidence %.2f < 0.8 — falling back to conversation", intentResult.Confidence))
 		m.handleConversation(item, summaryText, intentResult)
 	} else {
 		m.handlePipeline(item, summaryText, intentResult)

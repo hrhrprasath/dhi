@@ -11,6 +11,7 @@ import (
 type Pipeline struct {
 	Name        string              `yaml:"name"`
 	Description string              `yaml:"description"`
+	Weight      float64             `yaml:"weight"`
 	Params      []ParamDefinition   `yaml:"params"`
 	Action      PipelineAction      `yaml:"action"`
 }
@@ -53,15 +54,28 @@ func NewManager(path string) *Manager {
 	if path == "" {
 		path = "config/pipelines.yaml"
 	}
+	var pipelines []Pipeline
 	data, err := os.ReadFile(path)
-	if err != nil {
-		return &Manager{pipelines: defaultPipelines()}
+	if err == nil {
+		var cfg Config
+		if yaml.Unmarshal(data, &cfg) == nil {
+			pipelines = cfg.Pipelines
+		}
 	}
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil || len(cfg.Pipelines) == 0 {
-		return &Manager{pipelines: defaultPipelines()}
+	pipelines = append(pipelines, defaultPipelines()...)
+	return &Manager{pipelines: pipelines}
+}
+
+func defaultPipelines() []Pipeline {
+	return []Pipeline{
+		{Name: "todo", Description: "Create and manage todos/reminders (track, remind, todo, task, remember, follow up)", Weight: 0.9, Params: []ParamDefinition{
+			{Name: "action", Required: false, Default: "list"},
+			{Name: "text", Required: false, ExtractHint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"},
+		}, Action: PipelineAction{Type: "internal", Handler: "todo"}},
+		{Name: "system", Description: "System metrics and observability (system info, metrics, status, cpu, ram, uptime, kernel)", Weight: 0.6, Params: []ParamDefinition{
+			{Name: "metric", Required: false, Default: "all"},
+		}, Action: PipelineAction{Type: "internal", Handler: "system_metrics"}},
 	}
-	return &Manager{pipelines: cfg.Pipelines}
 }
 
 func (m *Manager) GetPipeline(name string) *Pipeline {
@@ -89,29 +103,4 @@ func (m *Manager) ListDescriptions() []string {
 
 func (m *Manager) PipelineCount() int {
 	return len(m.pipelines)
-}
-
-func defaultPipelines() []Pipeline {
-	return []Pipeline{
-		{Name: "stocks", Description: "Stock queries with news", Params: []ParamDefinition{
-			{Name: "company", Required: true},
-		}, Action: PipelineAction{Type: "bash", Script: "scripts/stock {company}"}},
-		{Name: "search_inline", Description: "Search web inline", Params: []ParamDefinition{
-			{Name: "query", Required: true},
-		}, Action: PipelineAction{Type: "bash", Summarize: true, IgnoreContext: true, Script: "scripts/search_inline {query}"}},
-		{Name: "search_browser", Description: "Open a website or search in default browser — only when explicitly asked to open/open in browser", Params: []ParamDefinition{
-			{Name: "query", Required: true},
-			{Name: "provider", Required: false},
-		}, Action: PipelineAction{Type: "bash", Script: "scripts/search_browser {provider} {query}"}},
-		{Name: "browse", Description: "Read webpage", Params: []ParamDefinition{
-			{Name: "url", Required: true},
-		}, Action: PipelineAction{Type: "bash", Summarize: true, Script: "scripts/browse {url}"}},
-		{Name: "system", Description: "System metrics and observability", Params: []ParamDefinition{
-			{Name: "metric", Required: false},
-		}, Action: PipelineAction{Type: "internal", Handler: "system_metrics"}},
-		{Name: "todo", Description: "Create and manage todos/reminders", Params: []ParamDefinition{
-			{Name: "action", Required: false, Default: "list"},
-			{Name: "text", Required: false, ExtractHint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"},
-		}, Action: PipelineAction{Type: "internal", Handler: "todo"}},
-	}
 }

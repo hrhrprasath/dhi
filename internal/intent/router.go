@@ -19,6 +19,7 @@ type ParsedIntent struct {
 	Event       string          `json:"event"`
 	Params      json.RawMessage `json:"params,omitempty"`
 	Description string          `json:"description,omitempty"`
+	Confidence  float64         `json:"confidence"`
 }
 
 type intentRequest struct {
@@ -90,7 +91,7 @@ func (r *Router) Route(userInput, summaryText string) (*ParsedIntent, error) {
 		return nil, fmt.Errorf("failed to parse intent: %w", err)
 	}
 
-	r.logger.Info("ROUTER", fmt.Sprintf("Intent parsed: %s", parsed.Event))
+	r.logger.Info("ROUTER", fmt.Sprintf("Intent: %s (confidence: %.2f)", parsed.Event, parsed.Confidence))
 	return parsed, nil
 }
 
@@ -157,6 +158,9 @@ func parseJSON(raw string) (*ParsedIntent, error) {
 	}
 	if parsed.Event == "" {
 		return nil, fmt.Errorf("missing 'event' field in: %s", raw)
+	}
+	if parsed.Confidence == 0 {
+		parsed.Confidence = 0.5
 	}
 	return &parsed, nil
 }

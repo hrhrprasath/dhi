@@ -1,6 +1,7 @@
 pipelines:
   - name: stocks
     description: Stock queries with news (stock, share, nifty, sensex, mutual fund, investing, buy, sell) anything related to stocks fundamental live stock data and related news
+    weight: 0.8
     params:
       - name: company
         required: true
@@ -11,6 +12,7 @@ pipelines:
 
   - name: search_inline
     description: Search web and display results in terminal (search, find, what is, how to, google)
+    weight: 0.7
     params:
       - name: query
         required: true
@@ -22,6 +24,7 @@ pipelines:
 
   - name: search_browser
     description: Open a website or search in default browser — only when explicitly asked to open/open in browser (open youtube, open wikipedia, open in browser)
+    weight: 0.3
     params:
       - name: query
         required: true
@@ -34,6 +37,7 @@ pipelines:
 
   - name: browse
     description: Read a webpage content inline (read article, open page, fetch url, get website)
+    weight: 0.4
     params:
       - name: url
         required: true
@@ -42,25 +46,15 @@ pipelines:
       summarize: true
       script: "scripts/browse {url}"
 
-  - name: system
-    description: System metrics and observability (system info, metrics, status, cpu, ram, uptime, kernel)
+  - name: music
+    description: Music playback/search (play, song, music, podcast, spotify) — opens Spotify and searches for the query
+    weight: 0.5
     params:
-      - name: metric
-        required: false
-        default: all
+      - name: query
+        required: true
+        extract_hint: "Extract the song name, artist, or podcast to search on Spotify"
     action:
-      type: internal
-      handler: system_metrics
+      type: bash
+      script: "scripts/spotify {query}"
 
-  - name: todo
-    description: Create and manage todos/reminders (track, remind, todo, task, remember, follow up)
-    params:
-      - name: action
-        required: false
-        default: list
-      - name: text
-        required: false
-        extract_hint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"
-    action:
-      type: internal
-      handler: todo
+

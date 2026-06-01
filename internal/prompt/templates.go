@@ -40,6 +40,7 @@ func BuildSchema() string {
 	for _, p := range pipelines {
 		event := fmt.Sprintf("EXECUTE_%s", strings.ToUpper(p.Name))
 		sb.WriteString(fmt.Sprintf("event: %s\ndescription: %s\n", event, p.Description))
+		sb.WriteString(fmt.Sprintf("weight: %.1f (higher = prioritize when ambiguous)\n", p.Weight))
 
 		var params []string
 		for _, param := range p.Params {
@@ -73,6 +74,7 @@ func buildExample(p PipelineInfo) string {
 	jsonParts := []string{
 		fmt.Sprintf(`"event": "EXECUTE_%s"`, strings.ToUpper(p.Name)),
 		fmt.Sprintf(`"description": "Execute %s"`, p.Name),
+		`"confidence": 0.9`,
 	}
 	if len(params) > 0 {
 		var paramPairs []string
@@ -139,14 +141,23 @@ RULE: The "description" field must be a brief, specific summary of the action fo
   Good:  "description": "Greet the user"
   Bad:   "description": "CONVERSATION"
 
+CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you are about this classification.
+  > 0.9: Very clear explicit request matching a specific pipeline
+  > 0.8: Clear actionable request
+  > 0.6: Likely actionable but some ambiguity
+  < 0.6: Ambiguous, default to CONVERSATION
+  Example: "buy apple stock" -> {"event": "EXECUTE_STOCKS", "params": {"company": "apple"}, "description": "Fetch Apple stock price and news", "confidence": 0.95}
+  Example: "what was AAPL doing yesterday?" -> {"event": "EXECUTE_STOCKS", "params": {"company": "AAPL"}, "description": "Check Apple stock performance", "confidence": 0.85}
+  Example: "how are you?" -> {"event": "CONVERSATION", "params": {}, "description": "Respond to greeting", "confidence": 0.55}
+
 TYPES:
 - CONVERSATION: params: search_terms (optional string array — key nouns/entities to search past data)
   Examples:
-  "hello" -> {"event": "CONVERSATION", "params": {}, "description": "Greet the user warmly"}
-  "what did we discuss about AAPL?" -> {"event": "CONVERSATION", "params": {"search_terms": ["AAPL", "apple stock"]}, "description": "Retrieve past discussion about AAPL"}
-  "remind me what I asked about nifty" -> {"event": "CONVERSATION", "params": {"search_terms": ["nifty", "nifty50"]}, "description": "Look up previous nifty-related queries"}
-  "who is PM of india" -> {"event": "CONVERSATION", "params": {}, "description": "Answer user's knowledge question"}
-  "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke"}
+  "hello" -> {"event": "CONVERSATION", "params": {}, "description": "Greet the user warmly", "confidence": 0.55}
+  "what did we discuss about AAPL?" -> {"event": "CONVERSATION", "params": {"search_terms": ["AAPL", "apple stock"]}, "description": "Retrieve past discussion about AAPL", "confidence": 0.65}
+  "remind me what I asked about nifty" -> {"event": "CONVERSATION", "params": {"search_terms": ["nifty", "nifty50"]}, "description": "Look up previous nifty-related queries", "confidence": 0.60}
+  "who is PM of india" -> {"event": "CONVERSATION", "params": {}, "description": "Answer user's knowledge question", "confidence": 0.55}
+  "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke", "confidence": 0.55}
 
 %[4]s
 
@@ -200,6 +211,7 @@ IMPORTANT: Only use conversation history if it's directly related to the current
 type PipelineInfo struct {
 	Name        string
 	Description string
+	Weight      float64
 	Params      []ParamInfo
 }
 
@@ -211,73 +223,58 @@ type ParamInfo struct {
 }
 
 func LoadPipelineInfos() []PipelineInfo {
-	data, err := os.ReadFile("config/pipelines.yaml")
-	if err != nil {
-		return defaultPipelines()
-	}
-
-	type rawPipeline struct {
-		Name        string `yaml:"name"`
-		Description string `yaml:"description"`
-		Params      []struct {
-			Name        string `yaml:"name"`
-			Required    bool   `yaml:"required"`
-			Default     string `yaml:"default"`
-			ExtractHint string `yaml:"extract_hint"`
-		} `yaml:"params"`
-	}
-	type rawConfig struct {
-		Pipelines []rawPipeline `yaml:"pipelines"`
-	}
-
-	var cfg rawConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return defaultPipelines()
-	}
-
 	var result []PipelineInfo
-	for _, rp := range cfg.Pipelines {
-		pi := PipelineInfo{
-			Name:        strings.ToUpper(rp.Name),
-			Description: rp.Description,
+
+	data, err := os.ReadFile("config/pipelines.yaml")
+	if err == nil {
+		type rawPipeline struct {
+			Name        string  `yaml:"name"`
+			Description string  `yaml:"description"`
+			Weight      float64 `yaml:"weight"`
+			Params      []struct {
+				Name        string `yaml:"name"`
+				Required    bool   `yaml:"required"`
+				Default     string `yaml:"default"`
+				ExtractHint string `yaml:"extract_hint"`
+			} `yaml:"params"`
 		}
-		for _, rp2 := range rp.Params {
-			pi.Params = append(pi.Params, ParamInfo{
-				Name:        rp2.Name,
-				Required:    rp2.Required,
-				Default:     rp2.Default,
-				ExtractHint: rp2.ExtractHint,
-			})
+		type rawConfig struct {
+			Pipelines []rawPipeline `yaml:"pipelines"`
 		}
-		result = append(result, pi)
+
+		var cfg rawConfig
+		if yaml.Unmarshal(data, &cfg) == nil {
+			for _, rp := range cfg.Pipelines {
+				pi := PipelineInfo{
+					Name:        strings.ToUpper(rp.Name),
+					Description: rp.Description,
+					Weight:      rp.Weight,
+				}
+				for _, rp2 := range rp.Params {
+					pi.Params = append(pi.Params, ParamInfo{
+						Name:        rp2.Name,
+						Required:    rp2.Required,
+						Default:     rp2.Default,
+						ExtractHint: rp2.ExtractHint,
+					})
+				}
+				result = append(result, pi)
+			}
+		}
 	}
-	if len(result) == 0 {
-		return defaultPipelines()
-	}
+
+	result = append(result, defaultPipelines()...)
 	return result
 }
 
 func defaultPipelines() []PipelineInfo {
 	return []PipelineInfo{
-		{Name: "STOCKS", Description: "Stock queries with news (stock, share, nifty, sensex, mutual fund, investing, buy, sell)", Params: []ParamInfo{
-			{Name: "company", Required: true},
-		}},
-		{Name: "SEARCH_INLINE", Description: "Search web and display results in terminal (search, find, what is, how to, google)", Params: []ParamInfo{
-			{Name: "query", Required: true},
-		}},
-		{Name: "SEARCH_BROWSER", Description: "Open a website or search in default browser — only when explicitly asked to open/open in browser", Params: []ParamInfo{
-			{Name: "query", Required: true},
-			{Name: "provider", Required: false, Default: "duckduckgo"},
-		}},
-		{Name: "BROWSE", Description: "Read a webpage content inline", Params: []ParamInfo{
-			{Name: "url", Required: true},
-		}},
-		{Name: "SYSTEM", Description: "System metrics and observability (system info, metrics, status, cpu, ram, uptime, kernel)", Params: []ParamInfo{
-			{Name: "metric", Required: false, Default: "all"},
-		}},
-		{Name: "TODO", Description: "Create and manage todos/reminders (track, remind, todo, task, remember, follow up)", Params: []ParamInfo{
+		{Name: "TODO", Description: "Create and manage todos/reminders (track, remind, todo, task, remember, follow up)", Weight: 0.9, Params: []ParamInfo{
 			{Name: "action", Required: false, Default: "list", ExtractHint: "add, list, done"},
 			{Name: "text", Required: false, ExtractHint: "Extract the task description from the user input (e.g., 'buy milk', 'call john', 'pay bill at 5pm')"},
+		}},
+		{Name: "SYSTEM", Description: "System metrics and observability (system info, metrics, status, cpu, ram, uptime, kernel)", Weight: 0.6, Params: []ParamInfo{
+			{Name: "metric", Required: false, Default: "all"},
 		}},
 	}
 }
