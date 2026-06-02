@@ -9,8 +9,8 @@ import (
 	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
-	"dhi_harness/internal/queue"
 	"dhi_harness/internal/services"
+	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
 
 	"charm.land/bubbles/v2/progress"
@@ -19,7 +19,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
+func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 	router *intent.Router, pipeExec *pipeline.Executor, convMgr *conversation.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager) *Model {
 
 	ti := textinput.New()
@@ -56,7 +56,7 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 	return &Model{
 		cfg:        cfg,
 		logger:     logger,
-		queueMgr:   qm,
+		taskMgr:   tm,
 		router:     router,
 		executor:   pipeExec,
 		convMgr:   convMgr,
@@ -70,6 +70,8 @@ func NewModel(cfg *config.Config, logger *services.Logger, qm *queue.Manager,
 		cpuProgress: cp,
 		ramProgress: rp,
 		gpuProgress: gp,
+		pendingTasks: tm.CountByStatus(task.StatusPending),
+		waitingTasks: tm.CountByStatus(task.StatusWaiting),
 		focused:      focusInput,
 		pipelines:    statusPipelines,
 		routerStatus: "OFFLINE",
@@ -89,8 +91,13 @@ func (m *Model) Init() tea.Cmd {
 	go m.consumerLoop()
 	go m.healthLoop()
 	go m.loggerForwardLoop()
+	m.taskMgr.StartLooper(60 * time.Second)
 
 	go func() {
+		activated := m.taskMgr.CheckSchedule()
+		if activated > 0 {
+			m.events <- refreshMsg{}
+		}
 		online := m.router.HealthCheck()
 		m.events <- routerStatusMsg{online: online}
 	}()
@@ -119,7 +126,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		rw := m.rightWidth()
 		vw := rw - 2
-		lh := max((msg.Height-9)/3, 3)
+		lh := max(int(float64(msg.Height-9)*0.2), 3)
 		ch := max(msg.Height-9-lh, 3)
 		m.logView.SetWidth(vw)
 		m.logView.SetHeight(lh)
@@ -135,8 +142,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.frame++
 		m.uptimeSec++
-		m.inputCount = m.queueMgr.InputLen()
-		m.outputCount = m.queueMgr.OutputLen()
+		m.pendingTasks = m.taskMgr.CountByStatus(task.StatusPending)
+		m.waitingTasks = m.taskMgr.CountByStatus(task.StatusWaiting)
 		m.metrics = m.sysSvc.GetMetrics()
 		m.refreshLogContent()
 		m.refreshOrbContent()

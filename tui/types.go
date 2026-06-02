@@ -5,8 +5,8 @@ import (
 	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
-	"dhi_harness/internal/queue"
 	"dhi_harness/internal/services"
+	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
 
 	"charm.land/bubbles/v2/progress"
@@ -65,7 +65,7 @@ var (
 type Model struct {
 	cfg       *config.Config
 	logger    *services.Logger
-	queueMgr  *queue.Manager
+	taskMgr   *task.Manager
 	router    *intent.Router
 	executor  *pipeline.Executor
 	convMgr   *conversation.Manager
@@ -88,8 +88,8 @@ type Model struct {
 	routerOnline  bool
 	routerStatus  string
 	pipelines     []pipelineEntry
-	inputCount    int
-	outputCount   int
+	pendingTasks  int
+	waitingTasks  int
 	focused       focusPanel
 
 	hostname  string

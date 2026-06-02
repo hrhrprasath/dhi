@@ -23,7 +23,7 @@ func (m *Model) render() string {
 	leftPanel := lipgloss.JoinVertical(lipgloss.Top,
 		m.renderMetrics(),
 		"",
-		m.renderQueues(),
+		m.renderTasks(),
 		"",
 		m.renderPipelinesBlock(),
 		"",
@@ -79,10 +79,10 @@ func (m *Model) renderMetrics() string {
 	)
 }
 
-func (m *Model) renderQueues() string {
-	content := fmt.Sprintf("IN:  %d items\nOUT: %d items", m.inputCount, m.outputCount)
+func (m *Model) renderTasks() string {
+	content := fmt.Sprintf("Pending: %d\nWaiting: %d", m.pendingTasks, m.waitingTasks)
 	return borderStyle.Width(28).Render(
-		lipgloss.NewStyle().Bold(true).Render(" QUEUES ") + "\n" + content,
+		lipgloss.NewStyle().Bold(true).Render(" TASKS ") + "\n" + content,
 	)
 }
 

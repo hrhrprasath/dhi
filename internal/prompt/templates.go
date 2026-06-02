@@ -276,5 +276,12 @@ func defaultPipelines() []PipelineInfo {
 		{Name: "SYSTEM", Description: "System metrics and observability (system info, metrics, status, cpu, ram, uptime, kernel)", Weight: 0.6, Params: []ParamInfo{
 			{Name: "metric", Required: false, Default: "all"},
 		}},
+		{Name: "SCHEDULE", Description: "Schedule tasks for later execution (schedule, remind, at, in, every, daily, later)", Weight: 0.8, Params: []ParamInfo{
+			{Name: "action", Required: false, Default: "add", ExtractHint: "add, list, delete, update"},
+			{Name: "when", Required: false, ExtractHint: "When to run (e.g., 'in 5 minutes', 'daily at 9am', 'tomorrow at 5pm')"},
+			{Name: "command", Required: false, ExtractHint: "What to do at the scheduled time"},
+			{Name: "schedule_id", Required: false},
+			{Name: "schedules", Required: false, ExtractHint: "JSON array of {when, command} objects for multi-schedule"},
+		}},
 	}
 }

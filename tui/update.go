@@ -8,8 +8,8 @@ import (
 
 	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
-	"dhi_harness/internal/queue"
 	"dhi_harness/internal/services"
+	"dhi_harness/internal/task"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -47,8 +47,8 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
 			if input != "" && m.routerOnline {
-				m.queueMgr.EnqueueInput(queue.NewInputItem(input))
-				m.inputCount = m.queueMgr.InputLen()
+				m.taskMgr.AddOnce(input)
+				m.pendingTasks = m.taskMgr.CountByStatus(task.StatusPending)
 			}
 		}
 		return nil
@@ -103,7 +103,7 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 func (m *Model) consumerLoop() {
 	for {
 		time.Sleep(200 * time.Millisecond)
-		m.processQueue()
+		m.processTasks()
 	}
 }
 
@@ -135,17 +135,18 @@ func (m *Model) loggerForwardLoop() {
 	}
 }
 
-// ─── Queue Processing ───
+// ─── Task Processing ───
 
-func (m *Model) processQueue() {
-	item := m.queueMgr.DequeueNextPending()
-	if item == nil {
+func (m *Model) processTasks() {
+	t := m.taskMgr.NextDue()
+	if t == nil {
 		return
 	}
-	if item.RetryCount >= 3 {
-		m.logger.Error("CONSUMER", fmt.Sprintf("Item %s exceeded max retries", item.ID))
-		item.Status = queue.StatusFailed
-		m.queueMgr.UpdateItem(item)
+	if t.RetryCount >= 3 {
+		m.logger.Error("CONSUMER", fmt.Sprintf("Task %s exceeded max retries", t.ID))
+		m.taskMgr.Update(t.ID, func(upd *task.Task) {
+			upd.Status = task.StatusFailed
+		})
 		return
 	}
 
@@ -157,27 +158,27 @@ func (m *Model) processQueue() {
 		summaryText += "\n\nPending todos:\n" + todos
 	}
 
-	m.logger.Info("CONSUMER", fmt.Sprintf("Classifying: %s", item.RawInput))
+	m.logger.Info("CONSUMER", fmt.Sprintf("Classifying: %s", t.RawInput))
 
-	intentResult, err := m.router.Route(item.RawInput, summaryText)
+	intentResult, err := m.router.Route(t.RawInput, summaryText)
 	if err != nil {
 		m.logger.Error("CONSUMER", fmt.Sprintf("Classify failed: %s", err))
-		item.RetryCount++
-		item.Status = queue.StatusPending
-		item.ProcessingStartedAt = nil
-		m.queueMgr.UpdateItem(item)
+		m.taskMgr.Update(t.ID, func(upd *task.Task) {
+			upd.RetryCount++
+			upd.Status = task.StatusPending
+		})
 		return
 	}
 
 	if intentResult.Confidence < 0.8 || !strings.HasPrefix(intentResult.Event, "EXECUTE_") {
 		m.logger.Info("CONSUMER", fmt.Sprintf("Confidence %.2f < 0.8 — falling back to conversation", intentResult.Confidence))
-		m.handleConversation(item, summaryText, intentResult)
+		m.handleConversation(t, summaryText, intentResult)
 	} else {
-		m.handlePipeline(item, summaryText, intentResult)
+		m.handlePipeline(t, summaryText, intentResult)
 	}
 }
 
-func (m *Model) handleConversation(item *queue.InputItem, summaryText string, intentResult *intent.ParsedIntent) {
+func (m *Model) handleConversation(t *task.Task, summaryText string, intentResult *intent.ParsedIntent) {
 	m.logger.Info("CONSUMER", fmt.Sprintf("Intent: %s — chatting", intentResult.Event))
 
 	terms := conversation.ExtractSearchTerms(intentResult.Params)
@@ -187,34 +188,31 @@ func (m *Model) handleConversation(item *queue.InputItem, summaryText string, in
 		searchResults = sr
 	}
 
-	response, err := m.router.Chat(item.RawInput, summaryText, searchResults)
+	response, err := m.router.Chat(t.RawInput, summaryText, searchResults)
 	if err != nil {
 		m.logger.Error("CONSUMER", fmt.Sprintf("Chat failed: %s", err))
-		item.Status = queue.StatusFailed
-		m.queueMgr.UpdateItem(item)
+		m.taskMgr.Update(t.ID, func(upd *task.Task) {
+			upd.Status = task.StatusFailed
+		})
 		return
 	}
 
-	response = cleanResponse(response, item.RawInput)
+	response = cleanResponse(response, t.RawInput)
 
 	m.logger.Info("DHI", response)
-	m.convMgr.UpdateSummary(item.RawInput, response)
-	m.events <- convMsg{input: item.RawInput, response: response}
+	m.convMgr.UpdateSummary(t.RawInput, response)
+	m.events <- convMsg{input: t.RawInput, response: response}
 
-	item.Status = queue.StatusCompleted
-	m.queueMgr.UpdateItem(item)
+	m.taskMgr.Update(t.ID, func(upd *task.Task) {
+		upd.Status = task.StatusCompleted
+		upd.Result = response
+	})
 }
 
-func (m *Model) handlePipeline(item *queue.InputItem, summaryText string, intentResult *intent.ParsedIntent) {
+func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *intent.ParsedIntent) {
 	m.logger.Info("CONSUMER", fmt.Sprintf("Intent: %s — executing", intentResult.Event))
 
 	pipelineName := strings.ToLower(strings.TrimPrefix(intentResult.Event, "EXECUTE_"))
-	item.Intent = &queue.Intent{
-		Pipeline: pipelineName,
-		Action:   intentResult.Event,
-	}
-	item.Status = queue.StatusCompleted
-	m.queueMgr.UpdateItem(item)
 
 	m.events <- pipelineStatusMsg{name: pipelineName, status: "RUNNING"}
 
@@ -228,7 +226,7 @@ func (m *Model) handlePipeline(item *queue.InputItem, summaryText string, intent
 		}
 	}
 
-	raw, synth := m.executor.FindAndExecute(intentResult.Event, params, item.RawInput, summaryText)
+	raw, synth := m.executor.FindAndExecute(intentResult.Event, params, t.RawInput, summaryText)
 
 	var reply string
 	if synth != raw {
@@ -246,10 +244,18 @@ func (m *Model) handlePipeline(item *queue.InputItem, summaryText string, intent
 	}
 
 	m.logger.Info("DHI", reply)
-	m.convMgr.UpdateSummary(item.RawInput, reply)
-	m.events <- convMsg{input: item.RawInput, response: reply}
+	m.convMgr.UpdateSummary(t.RawInput, reply)
+	m.events <- convMsg{input: t.RawInput, response: reply}
 	m.events <- pipelineStatusMsg{name: pipelineName, status: "IDLE"}
 	m.logger.Info("EXECUTOR", fmt.Sprintf("Pipeline %s completed", intentResult.Event))
-	output := queue.NewOutputItem(pipelineName, item.ID, raw, reply)
-	m.queueMgr.EnqueueOutput(output)
+
+	m.taskMgr.Update(t.ID, func(upd *task.Task) {
+		upd.Status = task.StatusCompleted
+		upd.Result = reply
+		if upd.Type == task.TypeScheduled && upd.IntervalSec > 0 {
+			nextTime := time.Now().Add(time.Duration(upd.IntervalSec) * time.Second)
+			upd.ScheduledFor = &nextTime
+			upd.Status = task.StatusWaiting
+		}
+	})
 }

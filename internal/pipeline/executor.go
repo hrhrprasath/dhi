@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"dhi_harness/internal/summarizer"
+	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
 )
 
@@ -24,11 +25,11 @@ type Executor struct {
 	handlers   *Handlers
 }
 
-func NewExecutor(manager *Manager, sum *summarizer.Summarizer) *Executor {
+func NewExecutor(manager *Manager, sum *summarizer.Summarizer, taskMgr *task.Manager) *Executor {
 	return &Executor{
 		manager:    manager,
 		summarizer: sum,
-		handlers:   NewHandlers(todo.NewManager(".data")),
+		handlers:   NewHandlers(todo.NewManager(".data"), taskMgr),
 	}
 }
 
