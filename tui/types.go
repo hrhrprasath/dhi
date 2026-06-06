@@ -30,6 +30,7 @@ type conversationEntry struct {
 }
 
 type tickMsg struct{}
+type fireTickMsg struct{}
 type routerStatusMsg struct{ online bool }
 type logMsg struct{ message string }
 type convMsg struct {
@@ -83,14 +84,17 @@ type Model struct {
 
 	frame int
 
-	conversations []conversationEntry
-	logEntries    []string
-	routerOnline  bool
-	routerStatus  string
-	pipelines     []pipelineEntry
-	pendingTasks  int
-	waitingTasks  int
-	focused       focusPanel
+	firePixels []int
+
+	conversations  []conversationEntry
+	logEntries     []string
+	routerOnline   bool
+	routerStatus   string
+	pipelines      []pipelineEntry
+	pendingTasks   int
+	waitingTasks   int
+	focused        focusPanel
+	logPopupVisible bool
 
 	hostname  string
 	kernel    string

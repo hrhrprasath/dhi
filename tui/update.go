@@ -23,6 +23,16 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	case msg.Code == 'd' && msg.Mod == tea.ModCtrl:
 		return tea.Quit
 
+	case msg.Code == tea.KeyEscape:
+		if m.logPopupVisible {
+			m.logPopupVisible = false
+			if m.focused == focusLogs {
+				m.focused = focusInput
+				return m.textInput.Focus()
+			}
+		}
+		return nil
+
 	case msg.Code == tea.KeyTab:
 		switch m.focused {
 		case focusLogs:
@@ -33,9 +43,14 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.textInput.Blur()
 			return nil
 		case focusConv:
-			m.focused = focusLogs
-			m.textInput.Blur()
-			return nil
+			if m.logPopupVisible {
+				m.focused = focusLogs
+				m.textInput.Blur()
+				m.logView.GotoBottom()
+				return nil
+			}
+			m.focused = focusInput
+			return m.textInput.Focus()
 		}
 
 	case msg.Code == tea.KeyEnter:
@@ -44,6 +59,10 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.textInput.SetValue("")
 			if input == "quit" || input == "exit" || input == ":q" || input == "/quit" || input == "/q" {
 				return tea.Quit
+			}
+			if input == "/log" || input == "/logs" || input == "/l" {
+				m.toggleLogPopup()
+				return nil
 			}
 			m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
 			if input != "" && m.routerOnline {
@@ -98,6 +117,18 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+func (m *Model) toggleLogPopup() {
+	m.logPopupVisible = !m.logPopupVisible
+	if m.logPopupVisible {
+		m.focused = focusLogs
+		m.textInput.Blur()
+		m.logView.GotoBottom()
+	} else {
+		m.focused = focusInput
+		m.textInput.Focus()
+	}
+}
+
 // ─── Background Loops ───
 
 func (m *Model) consumerLoop() {
@@ -112,6 +143,14 @@ func (m *Model) healthLoop() {
 		time.Sleep(30 * time.Second)
 		online := m.router.HealthCheck()
 		m.events <- routerStatusMsg{online: online}
+	}
+}
+
+func (m *Model) fireLoop() {
+	ticker := time.NewTicker(40 * time.Millisecond)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.events <- fireTickMsg{}
 	}
 }
 

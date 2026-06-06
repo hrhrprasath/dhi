@@ -6,11 +6,11 @@ Current state of the DHI Harness Go migration. Checkmarks track completion.
 
 ## TUI / Rendering
 
-- [ ] **Log word-wrap** — `m.logView.SoftWrap = true` (one-liner in `tui/model.go:NewModel`)
-- [ ] **NVIDIA placeholder** — Show `○ NVIDIA Coming Soon` in the system metrics panel (Rust had it)
+- [x] **Log word-wrap** — `m.logView.SoftWrap = true` (one-liner in `tui/model.go:NewModel`)
+- [x] **NVIDIA placeholder** — Show `○ NVIDIA Coming Soon` in the system metrics panel (Rust had it)
 - [ ] **Scrollbar in log panel** — Rust drew a scrollbar when focused; Go's viewport doesn't render one natively
-- [ ] **Scheduled task list in TUI** — TASKS panel only shows counts (pending/waiting); no list of upcoming schedules with their fire times
-- [ ] **Timer display for schedules** — Show countdown / "in 4h23m" next to each waiting task in the TUI
+- [x] **Scheduled task list in TUI** — TASKS panel shows up to 3 waiting tasks with countdown timers
+- [x] **Timer display for schedules** — Show countdown / "in 4h23m" next to each waiting task in the TUI
 
 ## Task / Schedule System
 
@@ -48,3 +48,4 @@ Current state of the DHI Harness Go migration. Checkmarks track completion.
 - [x] Orb animation — random spiking flow replaces old moon spinner
 - [x] All pipeline definitions moved to YAML (external) or Go defaults (internal: todo, system, schedule)
 - [x] TUI split into `types.go`, `model.go`, `view.go`, `update.go`
+- [x] **Log popup** — LOGS moved to toggleable popup (`/log`/`/logs`/`/l`); command center (conversation) gets full height; ESC to close popup

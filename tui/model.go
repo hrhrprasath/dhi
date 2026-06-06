@@ -23,15 +23,16 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 	router *intent.Router, pipeExec *pipeline.Executor, convMgr *conversation.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager) *Model {
 
 	ti := textinput.New()
-	ti.Placeholder = " Type a command... (Tab to focus)"
+	ti.Placeholder = " Type a command... (/log /logs /l → logs popup)"
 	ti.Prompt = "> "
 	ti.SetWidth(34)
 	focusCmd := ti.Focus()
 
 	initW := 40
-	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(8))
+	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(10))
+	lv.SoftWrap = true
 	lv.SetContent("No logs yet...")
-	cv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(8))
+	cv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(10))
 	cv.SetContent("Start a conversation...")
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
 	ov := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
@@ -74,7 +75,8 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 		waitingTasks: tm.CountByStatus(task.StatusWaiting),
 		focused:      focusInput,
 		pipelines:    statusPipelines,
-		routerStatus: "OFFLINE",
+		routerStatus:    "OFFLINE",
+		logPopupVisible: false,
 		hostname:     metrics.Hostname,
 		kernel:       metrics.Kernel,
 		uptimeSec:    metrics.UptimeSec,
@@ -91,6 +93,7 @@ func (m *Model) Init() tea.Cmd {
 	go m.consumerLoop()
 	go m.healthLoop()
 	go m.loggerForwardLoop()
+	go m.fireLoop()
 	m.taskMgr.StartLooper(60 * time.Second)
 
 	go func() {
@@ -126,8 +129,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		rw := m.rightWidth()
 		vw := rw - 2
-		lh := max(int(float64(msg.Height-9)*0.2), 3)
-		ch := max(msg.Height-9-lh, 3)
+		ch := max(msg.Height-7, 3)
+		lh := max(ch-1, 6)
 		m.logView.SetWidth(vw)
 		m.logView.SetHeight(lh)
 		m.convView.SetWidth(vw)
@@ -139,6 +142,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshOrbContent()
 		return m, m.eventPoller()
 
+	case fireTickMsg:
+		m.advanceFire()
+		m.refreshOrbContent()
+		return m, m.eventPoller()
+
 	case tickMsg:
 		m.frame++
 		m.uptimeSec++
@@ -146,7 +154,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.waitingTasks = m.taskMgr.CountByStatus(task.StatusWaiting)
 		m.metrics = m.sysSvc.GetMetrics()
 		m.refreshLogContent()
-		m.refreshOrbContent()
 		return m, tea.Batch(
 			m.eventPoller(),
 			tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
