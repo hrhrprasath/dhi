@@ -1,247 +1,273 @@
-# DHI OS: Terminal-Based Deterministic Harness Design Document
+# DHI OS: Terminal-Based Deterministic Harness — Design Document
 
 ## 1. High-Level Architecture Overview
 
-DHI is a lightweight, high-performance, command-line AI operating system designed to run natively on Apple Silicon (Mac Mini M4, 16GB Unified Memory). The system abandons fragile "autonomous AI agents" and heavy web-based frontends in favor of an **Event-Driven Deterministic Harness** wrapped in a blazingly fast Terminal UI (TUI).
-
-It utilizes the **"Cognitive Sandwich"** pattern: AI is strictly used at the boundaries (translating human input to JSON, and raw data to human summaries), while the core execution is handled by 100% pure, predictable Rust code.
+DHI is a lightweight, high-performance, command-line AI operating system for Apple Silicon (Mac Mini M4, 16GB Unified Memory). It uses the **Cognitive Sandwich** pattern: AI at the boundaries (intent classification and summarization), pure Go deterministic execution in the middle.
 
 ### Core Stack
-* **Frontend:** Terminal UI (TUI) via Rust crates `ratatui` and `crossterm`.
-* **Backend:** Rust (`tokio` for async runtimes, pure API/scraper execution).
-* **State Management:** Local SQLite database (`sqlx`).
-* **Cognitive Layer:**
-    * **Top Bread (Intent):** 1B/3B Local Model (e.g., Qwen 2.5 1.5B) via MLX/Ollama.
-    * **Bottom Bread (Synthesis):** NVIDIA NIM API (e.g., Llama 3.1 405B or Nemotron) for massive context.
+- **Frontend:** Terminal UI (TUI) via Bubble Tea v2 + Lip Gloss v2
+- **Backend:** Go (1.26) — standard library, gopsutil v3 for system metrics
+- **State Management:** JSON file persistence (`.data/` directory)
+- **Cognitive Layer:**
+  - Top Bread (Intent): Qwen 1B/3B via local Ollama — translates human input → strict JSON with confidence score
+  - Bottom Bread (Synthesis): Same local Ollama model — converts raw pipeline output → human summary
+
+### Design Principles
+- **Zero LLM tool calls** — AI only translates state; pipelines are pure Go
+- **Event-driven** — goroutines communicate over channels; Bubble Tea event loop drives updates
+- **Deterministic execution** — pipelines run predictable Go code or shell scripts
+- **Crash recovery** — task queue persists to JSON; pending tasks resume on startup
 
 ---
 
-## 2. Visual Architecture Blueprint (Mermaid)
+## 2. Visual Architecture
 
-```mermaid
-flowchart LR
-    User((User))
-
-    subgraph Interface Layer
-        UI[Ratatui TUI Dashboard]
-        STT[Whisper.cpp Wake Word]
-        TTS[Piper TTS Audio]
-    end
-
-    subgraph Mac Mini M4 - Unified Memory
-        direction TB
-        Bus{Rust Message Bus\ntokio::mpsc}
-        DB[(SQLite\nState & Memory)]
-        
-        LocalLLM[Local 1B/3B Model\nQwen/Llama - Intent Router]
-        
-        subgraph Pure Rust Pipelines
-            P1[Pipeline 1: RSS/News]
-            P2[Pipeline 2: Mail & Cal]
-            P3[Pipeline 3: Portfolio Tracker]
-            P4[Pipeline 4: Expense Ledger]
-            P5[Pipeline 5: Health Monitor]
-            P6[Pipeline 6: System Observability]
-            P7[Pipeline 7: BYOS Search]
-        end
-    end
-
-    subgraph External & Cloud
-        Nvidia[NVIDIA NIM API\nLlama 405B / Nemotron]
-        Google[Google Workspace APIs]
-        Yahoo[Yahoo Finance API]
-        Search[Brave/Serper Search API]
-    end
-
-    User <--> |Keyboard TUI| UI
-    User --> |Spoken Command| STT
-    TTS --> |Spoken Response| User
-
-    UI <--> |mpsc channels| Bus
-    STT --> |Parsed Text| Bus
-    Bus --> |Text to Speak| TTS
-
-    Bus <--> |Logs & Context| DB
-    Bus <--> |Parse Intent -> JSON| LocalLLM
-
-    Bus <--> P1
-    Bus <--> P2
-    Bus <--> P3
-    Bus <--> P4
-    Bus <--> P5
-    Bus <--> P6
-    Bus <--> P7
-
-    P2 <--> Google
-    P3 <--> Yahoo
-    P7 <--> Search
-
-    Bus <--> |Raw Data Payload -> Summary| Nvidia
+```
+User ──► TUI (Bubble Tea)
+              │
+              ▼
+        taskMgr.AddOnce()  ──►  processTasks()  (200ms poll)
+              │                              │
+              ▼                              ▼
+        ┌──── Ollama API ────┐        taskMgr.CheckSchedule()  (60s looper)
+        │  classify → JSON   │               │
+        └────────┬───────────┘               ▼
+                 │                    Activate due waiting tasks
+          ┌──────┴──────┐
+          ▼              ▼
+   EXECUTE_*       CONVERSATION
+          │              │
+          ▼              ▼
+   FindAndExecute    Chat()
+          │              │
+          ▼              ▼
+   Pipeline output ──► convMsg → TUI display
+          │
+          ▼
+   (optional) Summarizer → human summary
 ```
 
----
+### Pipeline Execution Flow
 
-## 3. TUI Semantics & Layout Schema
+```
+EXECUTE_STOCKS → FindAndExecute()
+  → resolve params → validate → executeAction
+    → bash: "scripts/stock {company}"
+    → output → (optional) summarize → reply
 
-The user interface operates inside the terminal (e.g., an iTerm2 drop-down visor). It uses `crossterm` for non-blocking input and `ratatui` for an information-dense, `htop`/`k9s`-style dashboard.
-
-### 3.1 Boot Sequence (`neofetch` Style)
-Displayed for 2 seconds upon binary execution to verify system integrity before loading the main dashboard.
-```text
-       /\          OS: DHI Harness v1.0
-      /  \         Host: Mac Mini (M4) / 16GB Unified
-     /____\        Kernel: Rust + tokio (v1.36)
-    /      \       Uptime: 0 days, 00:00:04
-   /        \      
-                   Router: Qwen 2.5 1.5B (Local) [ONLINE]
-                   Synth : NVIDIA NIM API        [ONLINE]
+EXECUTE_SCHEDULE → handleSchedule()
+  → parse "when" via TimeParser
+  → AddScheduled(command, scheduledFor, interval)
+  → looper fires when due → re-enters classify+execute flow
 ```
 
-### 3.2 Main Interactive Loop (`k9s` Style)
-A fully reactive dashboard. The UI thread runs independently of the `tokio` background workers, ensuring zero terminal freezing during execution.
+### Task Lifecycle
 
-```text
-[1] Main  [2] Pipelines  [3] Network  [4] Logs                    [ DHI OS ]
+```
+User input
+  → AddOnce(rawInput) → status: pending
+  → processTasks() picks up → status: processing
+  → classify → execute
+  → on success → status: completed
+  → on error → retry (max 3) → status: failed
 
-CPU [||||||||..........]  32%  |  ROUTER [Qwen 1.5B]   : IDLE
-RAM [|||||||||||||.....]  12G  |  SYNTH  [NVIDIA NIM]  : 0 tk/s
-Q   [|.................]   1   |  PORTFOLIO (NIFTY 50) : WATCHING
-
-────────────────────────────────────────────────────────────────────────────
-DAEMONS (Active Pipelines)                                [ ? Help ] [ q Quit ]
-NAME           STATUS       LAST EVENT                LATENCY   CPU%   MEM
-[+] Portfolio  Watching     Nifty 50: K-Div Setup     12ms      0.1    12M
-[+] RSS_Scrape Sleeping     Fetched 12 articles       --        0.0     8M
-[+] Health_Mon Idle         --                        --        0.0     4M
-[-] Deep_Rsch  EXECUTING    Parsing HTML DOM...       840ms     14.2   45M
-────────────────────────────────────────────────────────────────────────────
-> :tell portfolio to run a full analysis on current index
-[ROUTER] Intent identified -> TARGET: Portfolio, ACTION: Full Analysis
-[PORTFL] Polling Yahoo Finance API...
-[SYNTH]  NVIDIA API generating summary...
+Scheduled task
+  → AddScheduled(rawInput, time, interval) → status: waiting
+  → looper: ScheduledFor <= now → status: pending
+  → processTasks() picks up → same flow as above
+  → if recurring → compute next ScheduledFor → back to waiting
 ```
 
 ---
 
-## 4. The Cognitive Sandwich Architecture (Low-Level)
+## 3. TUI Layout
 
-DHI relies on multi-threaded `tokio::mpsc` channels. There are zero LLM "tool calls." AI only translates state.
+The TUI is split into a left panel (fixed 28 chars wide) and a right panel (remaining width, min 40 chars).
 
-### Stage 1: The Top Bread (Intent & Extraction)
-1. **User Input:** Raw text is captured via the TUI command bar.
-2. **Classification:** Text is piped to the Local 1B model. 
-3. **JSON Handoff:** The model translates human intent into strict JSON (e.g., `{"event": "EXECUTE_PORTFOLIO_CHECK", "target": "NIFTY_50"}`) and immediately unloads.
-4. **Dispatch:** DHI Core routes the JSON to the target Pipeline's Input Queue.
+### Left Panel (28 wide)
 
-### Stage 2: The Meat (Deterministic Execution)
-1. **Pure Code Trigger:** The Rust pipeline sees the event.
-2. **Zero-AI Execution:** Rust deterministically hits APIs, scrapes HTML, or queries databases.
-3. **Raw Data Aggregation:** Rust compiles all fetched data into a massive, unformatted text string.
-4. **Output Queue:** The raw data is pushed to the pipeline's Output Queue.
+```
+┌──────────────────────────────┐
+│        SYSTEM METRICS        │  ← CPU/RAM/GPU progress bars + Ollama status
+│ CPU: ████████░░░░ 42%        │
+│ RAM: ██████████░░ 60%        │
+│ GPU: ██░░░░░░░░░░ 12%        │
+│ ● Ollama READY               │
+├──────────────────────────────┤
+│           TASKS              │  ← pending/waiting task counts
+│ Pending: 2                   │
+│ Waiting: 5                   │
+├──────────────────────────────┤
+│         PIPELINES            │  ← pipeline status from Viewport
+│ todo         IDLE            │
+│ stocks       IDLE            │
+│ schedule     RUNNING         │
+├──────────────────────────────┤
+│           DHI OS             │  ← host info, version, uptime
+│ v0.1.0                       │
+│ Host: mac-mini               │
+│ Kernel: 24.3.0               │
+│ Up: 142m                     │
+├──────────────────────────────┤
+│                              │  ← orb animation (random spiking flow)
+│    ░▒▓█▓▒░ ░▒▓              │     bottom-to-top intensity
+│   ░▒▓███▓▒░                 │     warm amber glow
+│   ░▒▓███▓▒░                 │
+│   ░▒▓█▓▒░                   │
+│  ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁   │
+└──────────────────────────────┘
+```
 
-### Stage 3: The Bottom Bread (Synthesis & Formatting)
-1. **Routing:** DHI Core detects raw data in an Output Queue.
-2. **Synthesis:** Pushed to NVIDIA NIM API (or Local LLM for small payloads) to convert raw data into a human-readable summary.
-3. **Response:** The summary is printed to the TUI log buffer and spoken via TTS.
+### Right Panel (variable width)
+
+```
+┌────────────────────────────────────────────┐
+│                  LOGS                      │  ← scrollable, 20% height
+│ [ROUTER][INFO] User: check AAPL            │
+│ [CONSUMER][INFO] Classifying...             │
+│ [DHI][INFO] AAPL is trading at...          │
+├────────────────────────────────────────────┤
+│              CONVERSATION                   │  ← scrollable, 80% height
+│ You: what is the stock price of AAPL?      │
+│                                            │
+│ DHI: Apple (AAPL) is currently trading...  │
+│ ──────────────────────────────────────     │
+├────────────────────────────────────────────┤
+│ > Type a command... (Tab to focus) ● ONLINE│  ← text input + connection status
+└────────────────────────────────────────────┘
+```
+
+### Focus Cycling
+
+Tab cycles through the three right-panel panels: LOGS → INPUT → CONVERSATION → LOGS.
+Focused panel gets accent-colored border (orange `#FFA500`).
+Up/Down/PgUp/PgDown scroll when LOGS or CONVERSATION are focused.
 
 ---
 
-## 5. Pure Rust Pipeline Definitions
+## 4. Pipeline System
 
-These are strict, hardcoded state machines running as background `tokio` tasks.
+### Definitions
 
-* **Pipeline 1: RSS Gatherer**
-  * *Execution:* `reqwest` fetches XML/HTML -> `scraper` parses text.
-* **Pipeline 2: Calendar & Mail**
-  * *Execution:* Authenticates via Google OAuth -> Pulls unread threads via IMAP/REST.
-* **Pipeline 3: Portfolio Swing Tracker**
-  * *Constraint:* Hardcoded to reject scalping/minute-data. Strictly evaluates swing trading signals.
-  * *Execution:* Polls `yahoo_finance_api` for index data -> Calculates indicators (e.g., Knoxville Divergence) on daily/weekly timeframes -> Generates binary signal (True/False).
-* **Pipeline 4: Finance Ledger**
-  * *Execution:* Parses specific bank email senders via regex -> Writes to local SQLite.
-* **Pipeline 5: Health Monitor**
-  * *Execution:* Cron job -> Triggers UI prompt for manual entry -> Updates SQLite.
-* **Pipeline 6: System Observability**
-  * *Execution:* Reads macOS `sysinfo` -> Updates TUI header -> Issues SIGKILL to local Ollama instance if RAM exceeds bounds.
-* **Pipeline 7: BYOS Deep Research**
-  * *Execution:* Receives query -> Hits Brave/Serper API -> Rust HTTP client extracts paragraph text from resulting URLs.
+Pipelines are either:
+- **External** — defined in `config/pipelines.yaml` with bash/http/exec actions
+- **Internal** — hardcoded Go handlers (todo, system, schedule)
 
----
+### External Pipelines (YAML)
 
-## 6. CQRS Queue Architecture
+| Pipeline | Action | Summarize | Ignore Context |
+|----------|--------|-----------|----------------|
+| `stocks` | `scripts/stock {company}` | no | — |
+| `search_inline` | `scripts/search_inline {query}` | yes | yes |
+| `search_browser` | `scripts/search_browser {provider} {query}` | no | — |
+| `browse` | `scripts/browse {url}` | yes | no |
+| `music` | `scripts/spotify {query}` | no | — |
 
-DHI uses a **file-based persistent queue system** for crash recovery and continuity. Both Input and Output queues are stored as JSON files.
+### Internal Pipelines (Go Code)
 
-### 6.1 Input Queue (In-Memory)
+| Pipeline | Handler | Description |
+|----------|---------|-------------|
+| `todo` | `handleTodo` | CRUD for user todo list (add/list/complete) |
+| `system` | `systemMetrics` | Kernel/hostname/uptime info |
+| `schedule` | `handleSchedule` | Create/list/delete/update scheduled tasks |
 
-- **Purpose:** Stores pending user commands before processing (in-memory, JSON persistence TBD)
-- **Format:** In-memory vector of command objects
+### Action Types
 
-### 6.2 Output Queue
+| Type | Method | Use Case |
+|------|--------|----------|
+| `bash` | `bash -c "{script}"` | Shell scripts, APIs via curl |
+| `http` | `curl -s -X {method} {url}` | REST API calls |
+| `exec` | `exec.Command(name, args...)` | Local CLI tools |
+| `open` | `open {target}` | Open URLs/apps on macOS |
+| `internal` | Go handler function | Todo, system, schedule |
 
-- **Location:** `./data/queue/output.json`
-- **Purpose:** Stores pipeline execution results for display and persistence
-- **Format:** Array of result objects
+### Confidence-Based Routing
 
-```json
-[
-  {
-    "id": "uuid",
-    "pipeline": "portfolio",
-    "timestamp": "2026-05-07T10:30:05Z",
-    "summary": "AAPL is down 2%...",
-    "status": "success|error"
-  }
-]
-```
-
-### 6.3 Data Persistence (Markdown)
-
-Pipeline results are also persisted as markdown files for history and search:
-
-- **Path:** `./data/<pipeline>/<timestamp>.md`
-- **Example:** `./data/portfolio/2026-05-07T10-30-05.md`
-
-### 6.4 Queue Flow
-
-```
-                                    ┌─────────────────────┐
-                                    │      Pre-flight     │
-                                    │ (scheduled + retry) │
-                                    └──────────┬──────────┘
-                                               ↓
-User Input → Intent Router → Input Queue → Pipeline → Output Queue
-                                                         ↓
-                             Command Center ←────────────┘
-                                    ↓
-                    ./data/<pipeline>/<timestamp>.md
-```
-
-**Pre-flight** runs on startup and periodically:
-1. Check scheduled activities (cron-style intervals)
-2. Scan Input Queue for items with `status != completed` (failed/interrupted)
-3. Re-queue pending items back to Input Queue for reprocessing
-
-### 6.5 Input Queue Item Schema
-
-```json
-{
-  "id": "uuid",
-  "timestamp": "2026-05-07T10:30:00Z",
-  "source": "user|preflight",
-  "raw_input": "check Apple stock",
-  "intent": {"pipeline": "portfolio", "action": "check"},
-  "status": "pending|processing|completed|failed",
-  "retry_count": 0
-}
-```
+The LLM outputs a `confidence` field (0.0–1.0) with each classification:
+- `>= 0.8` → execute the classified event
+- `< 0.8` → fall back to conversation (Chat)
+- Pipelines also have a `weight` (0.3–0.9) as a priority hint for the LLM
 
 ---
 
-## 7. Implementation Strategy
+## 5. Task System
 
-* **Phase 1: TUI & Boilerplate:** Build the `ratatui` UI loop, the `crossterm` input handler, and the `tokio::mpsc` message bus. Establish the split-pane dashboard.
-* **Phase 2: Intent Layer:** Integrate the local Ollama REST call to route terminal inputs into strict JSON outputs.
-* **Phase 3: Core Pipelines:** Build the pure-Rust API integrations (starting with Pipeline 6 for system metrics and Pipeline 3 for Portfolio).
-* **Phase 4: Synthesis Layer:** Wire the Pipeline Output Queues to the NVIDIA NIM API for final summarization formatting.
-* **Phase 5: Queue System:** Implement file-based Input/Output queues with crash recovery.
+Replaces the old input/output queue architecture from the Rust version.
+
+### Task Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Ready to be classified and executed |
+| `processing` | Currently being classified or executed |
+| `completed` | Successfully finished |
+| `failed` | Error (max 3 retries) |
+| `waiting` | Scheduled, waiting for `ScheduledFor <= now` |
+
+### Task Manager
+
+- **Persistence:** `.data/tasks/tasks.json`
+- **One-shot tasks:** `AddOnce(rawInput)` — created on user input, executed immediately
+- **Scheduled tasks:** `AddScheduled(rawInput, time, intervalSec)` — created by `EXECUTE_SCHEDULE` handler
+- **Looper:** `StartLooper(60s)` — goroutine that checks for due waiting tasks
+- **Startup:** `CheckSchedule()` — activates any waiting tasks that are past their time
+
+### Time Parsing
+
+The `TimeParser` interface handles natural language time expressions:
+- `in 5 minutes` — relative duration
+- `at 5pm` — absolute time (today or tomorrow if past)
+- `tomorrow at 9am` — next day at time
+- `daily at 9am` — recurring daily
+- `every 30 minutes` — recurring interval
+- `@every 5m` — shorthand interval
+
+---
+
+## 6. Data Persistence
+
+```
+.data/
+├── dhi.log               # Logger output
+├── conversation/
+│   └── summary.json      # Full conversation turns (up to 50)
+├── todos/
+│   └── todos.json        # User todo list
+├── tasks/
+│   └── tasks.json        # All tasks (pending, completed, scheduled)
+├── intent/
+│   └── <timestamp>.md    # Raw classify prompt dumps
+└── <pipeline>/
+    └── <timestamp>.md    # Pipeline output persistence
+```
+
+---
+
+## 7. Key File Map
+
+| Layer | File | Role |
+|-------|------|------|
+| Entry | `cmd/dhi/main.go` | Dependency wiring, program start |
+| TUI | `tui/types.go` | Model, messages, styles |
+| TUI | `tui/model.go` | Init, Update, helpers |
+| TUI | `tui/view.go` | All rendering + orb animation |
+| TUI | `tui/update.go` | Key handling, loops, task processing |
+| Intent | `internal/intent/router.go` | Ollama classify + chat |
+| Prompt | `internal/prompt/templates.go` | Classify/conversation/synthesis prompts |
+| Pipeline | `internal/pipeline/manager.go` | YAML loading, pipeline definitions |
+| Pipeline | `internal/pipeline/executor.go` | Action dispatch, param interpolation |
+| Pipeline | `internal/pipeline/handlers.go` | Internal handlers (todo, system, schedule) |
+| Task | `internal/task/manager.go` | Task CRUD, persistence, looper |
+| Task | `internal/task/time.go` | Natural language time parsing |
+| Config | `config/pipelines.yaml` | External pipeline definitions |
+
+---
+
+## 8. Implementation Phases (Completed)
+
+- **Phase 1: TUI & Boilerplate** — Bubble Tea event loop, split-pane layout, viewports, textinput, Tab focus cycling, resize handling
+- **Phase 2: Intent Layer** — Ollama REST classify + chat, ParsedIntent with confidence, guardrailed prompts
+- **Phase 3: Core Pipelines** — YAML-defined pipelines, bash/http/exec/open/internal actions, param interpolation
+- **Phase 4: Task System** — Replace input/output queues with unified task manager, scheduled tasks, 60s looper
+- **Phase 5: Internal Handlers** — todo (CRUD), system_metrics, schedule (CRUD + multi-schedule)
+- **Phase 6: TUI Polish** — Word wrapping, markdown stripping, orb animation, focused border styling

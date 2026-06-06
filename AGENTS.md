@@ -5,19 +5,21 @@ This file provides guidance for AI agents working on the DHI Harness codebase.
 ## 1. Project Overview
 
 - **Name:** dhi_harness
-- **Language:** Rust (2021 edition)
-- **Type:** Terminal UI (TUI) using ratatui + crossterm
-- **Runtime:** tokio async runtime
+- **Language:** Go (1.26)
+- **Type:** Terminal UI (TUI) using Bubble Tea v2 + Lip Gloss v2
+- **Runtime:** Go runtime with Bubble Tea event loop
 - **Target:** Mac Mini M4 16GB Unified Memory
 
 ### Background & Architecture
 
 DHI is a Terminal AI OS inspired by Her (movie), Batman AI, and Jarvis/Ironman. It uses the **Cognitive Sandwich** pattern:
-- **Top Bread (Intent):** Local 1B/3B model (Qwen via Ollama) translates human input → strict JSON
-- **Meat (Execution):** Pure Rust pipelines (event-driven, zero AI tool calls) hit APIs/scrapers
-- **Bottom Bread (Synthesis):** NVIDIA NIM API (Llama 405B) converts raw data → human summary
+- **Top Bread (Intent):** Local 1B/3B model (Qwen via Ollama) translates human input → strict JSON with confidence score
+- **Meat (Execution):** Pure Go pipelines (event-driven, zero AI tool calls) hit APIs/scrapers via bash scripts or internal handlers
+- **Bottom Bread (Synthesis):** Same local model (Qwen via Ollama) converts raw data → human summary
 
-**7 Pipelines (Daemons):** RSS, Mail/Calendar, Portfolio/Trading, Expense Ledger, Health, System Observability, Deep Research
+**Pipelines:** stocks, search_inline, search_browser, browse, music (external YAML-defined), todo, system, schedule (internal Go-defined)
+
+**Task System:** Universal unit of work replacing input/output queues. Tasks are one-shot (execute immediately) or scheduled (cron-based). A 60s looper scans for due scheduled tasks.
 
 ---
 
@@ -25,31 +27,28 @@ DHI is a Terminal AI OS inspired by Her (movie), Batman AI, and Jarvis/Ironman. 
 
 ### Building
 ```bash
-cargo build          # Debug build
-cargo build --release  # Release build
+go build ./...          # Build all packages
+go build ./cmd/dhi      # Build binary only
 ```
 
 ### Running
 ```bash
-cargo run          # Run debug build
-cargo run --release  # Run release build
+go run ./cmd/dhi        # Run from source
+go build ./cmd/dhi && ./dhi  # Build + run binary
 ```
 
 ### Testing
 ```bash
-cargo test                    # Run all tests
-cargo test <test_name>        # Run specific test (exact match)
-cargo test -- test_name       # Run tests matching pattern
-cargo test -- --nocapture     # Show print output
-cargo test -- --test-threads=1  # Run tests sequentially
+go test ./...                    # Run all tests
+go test ./internal/pipeline      # Test specific package
+go test -v ./...                 # Verbose output
 ```
 
 ### Linting and Formatting
 ```bash
-cargo fmt        # Format code (run before committing)
-cargo clippy     # Lint code
-cargo clippy -- -D warnings  # Treat warnings as errors
-cargo check      # Check compilation without building
+go fmt ./...         # Format all Go files
+go vet ./...         # Static analysis
+golangci-lint run    # Full lint (if configured)
 ```
 
 ---
@@ -59,114 +58,124 @@ cargo check      # Check compilation without building
 ### 3.1 Imports
 
 Organize imports in groups with blank lines between:
-1. Standard library (`std`, `io`, etc.)
-2. External crates (`tokio`, `ratatui`, `crossterm`, `anyhow`)
-3. Local modules
+1. Standard library (`fmt`, `strings`, `time`, etc.)
+2. External packages (`charm.land/bubbletea/v2`, `charm.land/lipgloss/v2`, `gopkg.in/yaml.v3`)
+3. Internal packages (`dhi_harness/internal/...`)
 
-Use `Event as CEvent` alias to avoid name conflicts.
+```go
+import (
+	"fmt"
+	"strings"
+	"time"
 
-```rust
-use anyhow::Result;
-use crossterm::{
-    event::{self, Event as CEvent, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph},
-    Terminal,
-};
-use std::{io, time::{Duration, Instant}};
-use tokio::sync::{mpsc, Mutex};
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"dhi_harness/internal/config"
+	"dhi_harness/internal/intent"
+)
 ```
 
 ### 3.2 Formatting
 
-- Maximum line length: 100 characters
-- Use 4 spaces for indentation
-- Use trailing commas in multi-line function calls
+- Use `go fmt` (tab indentation, 8-char tabs)
+- Maximum line length: 100 characters (enforced manually)
+- Use trailing commas in multi-line struct/function literals
 
-### 3.3 Types
+### 3.3 Naming Conventions
 
-- Use explicit type annotations for function parameters and return types
-- Use `Arc<Mutex<T>>` for shared state across async tasks
+- **camelCase**: variables, function parameters, unexported fields
+- **PascalCase**: exported types, functions, struct fields
+- **UPPER_CASE**: constants (iota-based const blocks)
+- Unexported package-level functions/types don't need `_` prefix
 
-```rust
-struct AppState {
-    should_quit: bool,
-    input_buffer: String,
-    logs: Vec<String>,
-    active_pipelines: Vec<(String, String, String)>,
-}
+### 3.4 Error Handling
 
-pub enum SystemEvent {
-    Input(crossterm::event::KeyEvent),
-    Tick,
-    SystemLog(String),
-    PipelineUpdate { name: String, status: String },
-}
+- Return `error` from functions (not panics)
+- Use `fmt.Errorf("context: %w", err)` for error wrapping
+- Log errors with `logger.Error(component, msg)` — never log secrets
+
+### 3.5 TUI Patterns (Bubble Tea v2)
+
+- Model struct holds all state; `Update()` dispatches on message types
+- View returns `tea.View{Content, AltScreen}` — use AltScreen for full terminal
+- `tea.WindowSizeMsg` is the single source of layout dimensions
+- Use `tea.Batch()` to return multiple commands
+- Use `tea.Tick()` for periodic re-renders (never `time.Sleep` in Update)
+- Viewports (`viewport.Model`) for scrollable panels
+- Textinput for command input
+- Progress bars for CPU/RAM/GPU metrics
+
+### 3.6 Task System
+
+All user inputs create a `task.Task` via `taskMgr.AddOnce()`. The `processTasks` loop (200ms poll) picks up pending tasks, classifies via Ollama, and executes. Scheduled tasks are created with `taskMgr.AddScheduled()` and checked by a 60s looper.
+
+```go
+// Task statuses
+StatusPending    // ready to classify+execute
+StatusProcessing // being processed
+StatusCompleted  // done
+StatusFailed     // error, retries exhausted
+StatusWaiting    // scheduled, waiting for time
 ```
 
-### 3.4 Naming Conventions
-
-- **Snake_case**: variables, functions, struct fields
-- **PascalCase**: types, enum variants
-- **SCREAMING_SNAKE_CASE**: static constants, config values
-
-### 3.5 Error Handling
-
-- Use `anyhow::Result` for application code
-- Use `?` operator for error propagation
-- Include context using `anyhow!` macro
-
-### 3.6 Async Patterns
-
-- Use `tokio::main` macro for async main
-- Use `mpsc::channel` for message passing
-- Use `Arc<Mutex<T>>` for shared state and clone tx before spawning
-
-### 3.7 TUI Patterns (ratatui)
-
-- Use `CrosstermBackend` for terminal backend
-- Create render functions taking `&mut ratatui::Frame` and `&AppState`
-- Use `Block::default().borders(Borders::ALL).title(" TITLE ")`
-
-### 3.8 Comments
+### 3.7 Comments
 
 - Do NOT add comments unless explicitly requested
 - Code should be self-documenting
 
-### 3.9 Safety and Security
+### 3.8 Safety and Security
 
 - Never log secrets, keys, or credentials
 - Use `.env` files for sensitive configuration (never commit)
-- Validate user input before processing
+- All bash scripts handle interpolation via the executor (params mapped from LLM JSON)
 
 ---
 
 ## 4. Key Files
 
-- `src/main.rs` - Main application entry point
-- `Cargo.toml` - Project dependencies
-- `docs/design.md` - Full architecture specification
+- `cmd/dhi/main.go` — Application entry point, wires all dependencies
+- `tui/types.go` — Model struct, message types, styles
+- `tui/model.go` — NewModel, Init, Update, eventPoller, helpers
+- `tui/view.go` — View, render* methods, orb animation, content refresh
+- `tui/update.go` — Key handling, background loops, processTasks, pipeline/conversation handlers
+- `internal/intent/router.go` — Ollama classify + chat, ParsedIntent with confidence
+- `internal/pipeline/executor.go` — FindAndExecute, action dispatch (bash, internal, http, exec, open)
+- `internal/pipeline/handlers.go` — Internal handlers (todo, system_metrics, schedule)
+- `internal/pipeline/manager.go` — Pipeline definitions, YAML loading, defaults
+- `internal/task/manager.go` — Task CRUD, persistence, 60s looper
+- `internal/task/time.go` — TimeParser interface + DefaultParser (natural language → time)
+- `internal/prompt/templates.go` — Classify/Conversation/Synthesis prompts, BuildSchema
+- `config/pipelines.yaml` — External pipeline definitions (stocks, search*, browse, music)
+- `PENDING.md` — Remaining work items
 
 ---
 
-## 5. Testing Strategy
+## 5. Architecture Overview
 
-- Write unit tests for pure functions
-- Test async code using `#[tokio::test]`
-- Use temporary directories for filesystem tests
-- Mock external services (APIs, databases)
+```
+User Input → taskMgr.AddOnce() → processTasks() (200ms poll)
+  → Route() via Ollama classify
+    → EXECUTE_* → handlePipeline → FindAndExecute → output
+    → CONVERSATION → handleConversation → Chat via Ollama
+    → confidence < 0.8 → fallback to conversation
 
----
+Startup: taskMgr.CheckSchedule() — pick up due scheduled tasks
+Looper (60s): CheckSchedule() — activate waiting tasks when ScheduledFor <= now
+Recurring tasks: after execution, compute next ScheduledFor, set back to waiting
+```
 
-## 6. Performance
+## 6. Testing Strategy
 
-- Minimize allocations in hot paths
-- Use `tokio::select!` for concurrent operations
-- Avoid blocking in async context (use `tokio::task::spawn_blocking`)
-- Profile before optimizing
+- Write unit tests for pure functions (parser, prompt output, time parsing)
+- Use `_test.go` files in the same package
+- Temporary directories for filesystem tests
+- Test task manager CRUD + persistence
+
+## 7. Performance
+
+- Minimize allocations in hot paths (render loop, tick handler)
+- Viewport content is recomputed only when state changes (not on every render)
+- Orb animation uses fast math primitives (no allocations per cell)
+- Consumer loop polls at 200ms — avoids busy-waiting
+- Avoid blocking in Update (use goroutines for LLM calls, file IO)

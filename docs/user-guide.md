@@ -1,19 +1,20 @@
 # DHI Harness User Guide
 
-DHI (Deterministic Harness Intelligence) is a terminal-based AI operating system that routes user input through an intent parser (Ollama local LLM), executes actions via configurable pipelines, and summarizes results.
+DHI (Deterministic Harness Intelligence) is a terminal-based AI operating system that routes user input through an intent parser (Ollama local LLM), executes actions via pipelines, and summarizes results.
 
 ---
 
 ## Getting Started
 
-### Running the Application
+### Requirements
+- **Go 1.26+**
+- **Ollama** running locally with a model (e.g., `qwen2.5:1.5b`)
 
+### Running
 ```bash
-# Debug build
-cargo run
-
-# Release build
-cargo run --release
+go build ./cmd/dhi && ./dhi
+# or
+go run ./cmd/dhi
 ```
 
 ### Controls
@@ -21,142 +22,181 @@ cargo run --release
 | Key | Action |
 |-----|--------|
 | `Enter` | Submit command |
-| `Ctrl+C` | Quit application |
-| `Tab` | Switch between Logs and Command panels |
-| `↑/↓` | Scroll panel |
+| `Tab` | Cycle focus: LOGS → INPUT → CONVERSATION |
+| `↑/↓` | Scroll active panel |
+| `PgUp/PgDown` | Page scroll active panel |
+| `Ctrl+C` / `Ctrl+D` | Quit |
+| `quit` / `exit` / `:q` | Quit via command |
 
 ---
 
 ## Pipeline Configuration
 
-Pipelines are defined in `config/pipelines.yaml`. Each pipeline defines:
-- **name**: Unique identifier
-- **description**: Keywords for LLM routing (what it handles)
-- **params**: Parameters to extract from user input
-- **action**: What to execute
-- **summarizer**: Prompt for LLM to summarize output
+Pipelines are defined in `config/pipelines.yaml` (external) or hardcoded in Go (internal).
 
-### Pipeline Fields
+### External Pipelines (YAML)
 
-| Field | Description |
-|-------|-------------|
-| `name` | Pipeline identifier |
-| `description` | Keywords/phrases for routing (e.g., "stock, portfolio, nifty") |
-| `params` | List of parameters |
-| `params[].name` | Parameter name |
-| `params[].required` | Whether parameter is required |
-| `params[].default` | Default value if not provided |
-| `action.type` | Action type (http, exec, bash, open, internal) |
-| `action.*` | Action-specific fields |
-| `summarizer.prompt` | Prompt for summarization LLM |
+```yaml
+pipelines:
+  - name: stocks
+    description: Stock queries with news
+    weight: 0.8
+    params:
+      - name: company
+        required: true
+        extract_hint: "Extract company name, stock symbol, or index"
+    action:
+      type: bash
+      script: "scripts/stock {company}"
+```
+
+### Pipeline Weight
+
+Each pipeline has a `weight` (0.3–0.9) shown to the LLM as a priority hint. Higher = more likely to be selected when multiple pipelines match.
+
+| Weight | Pipeline |
+|--------|----------|
+| 0.9 | todo |
+| 0.8 | stocks, schedule |
+| 0.7 | search_inline |
+| 0.6 | system |
+| 0.5 | music |
+| 0.4 | browse |
+| 0.3 | search_browser |
 
 ---
 
-## Action Types
+## Available Pipelines
 
-### 1. HTTP Request
-```yaml
-action:
-  type: http
-  url: "https://api.example.com/data"
-  method: GET
-  auth:
-    header: "Authorization"
-    value: "Bearer {api_key}"
+### 1. Stocks
+Fetch stock prices and news.
+```
+check apple stock
+what is nifty doing
+AAPL share price
 ```
 
-| Field | Description |
-|-------|-------------|
-| `url` | Endpoint URL (use `{param}` for interpolation) |
-| `method` | HTTP method (GET, POST, etc.) |
-| `auth` | Optional authentication header |
-
-### 2. Execute Command (CLI)
-```yaml
-action:
-  type: exec
-  command: "spotify-cli"
-  args: ["search", "{query}"]
+### 2. Search Inline
+Search the web and display results in-terminal.
+```
+search latest AI news
+find recipe for pasta
+what is quantum computing
 ```
 
-| Field | Description |
-|-------|-------------|
-| `command` | Command to execute |
-| `args` | Arguments (use `{param}` for interpolation) |
-
-### 3. Bash Script
-```yaml
-action:
-  type: bash
-  script: "ls -la {directory}"
+### 3. Search Browser
+Open a search in the default browser (only when explicitly asked).
+```
+open youtube in browser
+search wikipedia for go language
 ```
 
-| Field | Description |
-|-------|-------------|
-| `script` | Bash script to execute |
-
-### 4. Open URL/App
-```yaml
-action:
-  type: open
-  target: "https://example.com"
+### 4. Browse
+Read a webpage's content inline.
 ```
-- If target starts with `http://` or `https://` → opens in default browser
-- Otherwise → opens as macOS application
+read https://example.com/article
+open page https://news.ycombinator.com
+```
 
----
+### 5. Music
+Search Spotify for a song/artist/podcast.
+```
+play shape of you
+search spotify for jazz
+play lofi beats
+```
 
-## Built-in Pipelines
+### 6. System
+System information and observability.
+```
+show system status
+what's my uptime
+check kernel version
+```
 
-| Pipeline | Description | Example Input |
-|----------|-------------|---------------|
-| `portfolio` | Stock/portfolio queries | "check apple stock" |
-| `rss` | RSS feed/news | "fetch techcrunch rss" |
-| `search` | Web search | "search latest AI news" |
-| `system` | System metrics | "show system status" |
-| `expense` | Expense tracking | "spent 500 on food" |
-| `health` | Health tracking | "log workout 30min" |
-| `music` | Music search | "play songname" |
-| `open_url` | Open URL | "open https://github.com" |
-| `open_app` | Open application | "open spotify" |
-| `exec_cmd` | Run CLI command | "run ls -la" |
-| `bash_script` | Run bash | "bash echo hello" |
-| `http_api` | API with auth | "fetch api data" |
+### 7. Todo
+CRUD for personal task list.
+```
+add buy milk to my todos
+list my todos
+done 123456
+```
+
+### 8. Schedule
+Schedule commands for later execution. Supports single and multi-schedule.
+```
+remind me to check AAPL at 5pm
+schedule play song at 9am daily and news at 9:30am
+list schedules
+delete schedule abc123
+```
 
 ---
 
 ## Intent Flow
 
 ```
-User Input → Ollama (Intent Router) → Parse JSON → Pipeline Lookup → Execute Action → Summarize Output
+1. Type input → taskMgr creates a one-shot task (pending)
+2. processTasks() picks it up (200ms poll)
+3. Ollama classifies → EXECUTE_XXX event with confidence score
+4. If confidence >= 0.8 → execute pipeline
+5. If confidence < 0.8 → fall back to conversation (Chat)
+6. Result displayed in CONVERSATION panel
 ```
 
-1. **Input**: User enters command
-2. **Intent Router**: Ollama parses input → `EXECUTE_PIPELINE`, `target`, `params`
-3. **Pipeline Lookup**: Map event to pipeline name
-4. **Execute**: Run action with interpolated params
-5. **Summarize**: Use summarizer prompt for output
+### Confidence & Fallback
 
-### Fallback Behavior
-- If event is `UNKNOWN` → use search pipeline
-- If required params missing → use search pipeline with original input
+The LLM outputs a `confidence` score with every classification:
+- `> 0.9`: Very clear match
+- `>= 0.8`: Execute pipeline
+- `< 0.8`: Treat as conversation (Chat)
+- If uncertain, the LLM should default to low confidence
+
+---
+
+## Scheduling
+
+### One-shot schedule
+```
+remind me to check crypto in 30 minutes
+```
+Creates a task that fires once after 30 minutes.
+
+### Recurring schedule
+```
+schedule play lofi at 8am daily
+```
+Creates a recurring daily task. After execution, it re-schedules for the next day.
+
+### Multi-schedule (one command, multiple schedules)
+```
+play song at 9am daily and give me news summary at 9:30am
+```
+Creates two separate schedules from a single input.
+
+### Managing schedules
+```
+list schedules          # View all waiting tasks
+delete schedule abc123  # Delete by ID (prefix match)
+update schedule abc123 when="daily at 10am"
+update schedule abc123 command="check nifty"
+```
 
 ---
 
 ## Data Storage
 
-- Data stored in `./.data/` directory
-- Intent prompts saved to `.data/intent/<timestamp>.md`
-- Queue items in `.data/queue/`
+All data is stored in `.data/`:
 
----
-
-## Commands
-
-| Command | Action |
-|---------|--------|
-| `quit` / `exit` | Exit application |
-| Any other text | Route through intent parser |
+```
+.data/
+├── dhi.log                 # Application logs
+├── tasks/tasks.json        # All tasks (pending + completed + scheduled)
+├── todos/todos.json        # User todo list
+├── conversation/summary.json  # Conversation history
+├── intent/<timestamp>.md   # Classify prompt dumps
+└── <pipeline>/<timestamp>.md  # Pipeline output persistence
+```
 
 ---
 
@@ -164,15 +204,16 @@ User Input → Ollama (Intent Router) → Parse JSON → Pipeline Lookup → Exe
 
 ### Ollama not responding
 - Ensure Ollama is running: `ollama list`
-- Check model: `qwen2.5:1.5b`
+- Check the model is downloaded: `ollama pull qwen2.5:1.5b`
 
 ### Pipeline not found
 - Check `config/pipelines.yaml` syntax
-- Ensure pipeline name matches event (EXECUTE_{NAME})
+- Ensure pipeline name matches the event prefix (`EXECUTE_{NAME}`)
 
 ### Action fails
-- Check action type is supported
-- Verify URL/command exists
+- Check action type is supported (bash, http, exec, open, internal)
+- Verify the script file exists in `scripts/`
+- Check script permissions (`chmod +x scripts/*`)
 
 ---
 
@@ -180,24 +221,14 @@ User Input → Ollama (Intent Router) → Parse JSON → Pipeline Lookup → Exe
 
 ### Building
 ```bash
-cargo build
-cargo build --release
-```
-
-### Testing
-```bash
-cargo test
-cargo test <test_name>
+go build ./...
 ```
 
 ### Linting
 ```bash
-cargo fmt
-cargo clippy
+go fmt ./...
+go vet ./...
 ```
 
----
-
-## Architecture
-
+### Architecture
 See `docs/design.md` for detailed architecture documentation.
