@@ -73,18 +73,14 @@ func (m *Model) renderMetrics() string {
 	cpuPct := m.metrics.CPU / 100.0
 	ramPct := float64(m.metrics.RAMUsedMB) / float64(max(int(m.metrics.RAMTotalMB), 1))
 
-	gpuLine := fmt.Sprintf("GPU: %s", m.gpuProgress.ViewAs(m.metrics.GPUPercent/100.0))
-	if m.metrics.GPUPercent == 0 {
-		gpuLine = "GPU: ○ NVIDIA Coming Soon"
-	}
-
+		gpuLine := fmt.Sprintf("GPU: %s", m.gpuProgress.ViewAs(m.metrics.GPUPercent/100.0))
 	content := fmt.Sprintf(
-		"CPU: %s\nRAM: %s\n%s\n%s %s",
-		m.cpuProgress.ViewAs(cpuPct),
-		m.ramProgress.ViewAs(ramPct),
+			"CPU: %s\nRAM: %s\n%s\n%s %s",
+			m.cpuProgress.ViewAs(cpuPct),
+			m.ramProgress.ViewAs(ramPct),
 		gpuLine,
-		lipgloss.NewStyle().Foreground(statusColor).Render(statusDot),
-		lipgloss.NewStyle().Foreground(statusColor).Render("Ollama "+m.routerStatus),
+			lipgloss.NewStyle().Foreground(statusColor).Render(statusDot),
+			lipgloss.NewStyle().Foreground(statusColor).Render("Ollama "+m.routerStatus),
 	)
 
 	return borderStyle.Width(28).Render(
