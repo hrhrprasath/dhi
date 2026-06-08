@@ -1,4 +1,4 @@
-# DHI Harness — Design & Architecture Analysis (Go Migration)
+# DHI Harness — Design & Architecture Analysis
 
 ## 1. Architecture Summary
 
@@ -27,34 +27,30 @@ Human Input → [Local LLM: Intent→JSON] → [Go Pipelines: Deterministic Exec
 
 ---
 
-## 3. Architecture From Excalidraw (Original Design vs Implementation)
-
-The original Rust excalidraw (`docs/design.excalidraw`) shows:
+## 3. Architecture Evolution
 
 ```
-User ──► Intent Router ──► Input Queue ──► Pipeline ──► Output Queue ──► Display
-               ▲                            │
-         Pre-flite (retry)                  ▼
-                                      Persist .md
+User ──► taskMgr.AddOnce(rawInput) ──► processTasks() ──► Route() ──► Execute ──► TUI
+               │                            │
+         Persist before LLM           Classify + dispatch
 ```
 
-**How the Go migration improves on this:**
+**Key design decisions:**
 
-| Original (Rust) | Go Migration | Improvement |
-|----------------|--------------|-------------|
-| Input queue AFTER LLM | Task system: raw input stored BEFORE classification | Crash = no data loss; retries don't need re-classification |
+| Before | Now | Reason |
+|--------|-----|--------|
+| Input queue AFTER LLM | Task system stores raw input BEFORE classification | Crash recovery; retries preserve original input |
 | Output queue + display + persist | Task stores result; TUI reads from event channel | No dual-consumer inconsistency |
-| 7 pipelines (RSS, Mail, Portfolio...) | 8 pipelines (stocks, search, browse, music, todo, system, schedule...) | Simpler, more focused |
-| curl subprocess only | bash/http/exec/open/internal + proper interpolation | Same pragmatic approach |
-| tokio async with block_in_place | Go goroutines + stdlib | Cleaner concurrency |
+| 7 varied pipelines | 8 focused pipelines (stocks, search, browse, music, todo, system, schedule...) | Simpler, more focused |
+| curl subprocess only | bash/http/exec/open/internal + interpolation | Same pragmatic approach, all in stdlib |
 
 ---
 
 ## 4. Current Architecture Decisions
 
-### 4.1 Task System (replaces CQRS queues)
+### 4.1 Task System
 
-The old Rust design had Input Queue after the LLM — a fundamental flaw. The Go migration fixes this:
+Input is stored before any LLM classification — crash-safe by design:
 
 ```
 User ──► taskMgr.AddOnce(rawInput) ──► task persisted (pending)
@@ -81,9 +77,7 @@ Key benefits:
 
 ### 4.2 Single LLM for Both Layers
 
-The Go migration uses the same Qwen model for both classification AND summarization — same as the Rust version's actual implementation. The original design document promised NVIDIA NIM 405B for synthesis, but the excalidraw diagram honestly showed a single Ollama API.
-
-**Current state:** Both top and bottom bread use the same model. Acceptable for a local-first system. The sandwich is two thin slices of the same bread, but it works.
+Both top bread (classify) and bottom bread (summarize) use the same local Qwen model via Ollama. Acceptable for a local-first system. The sandwich is two thin slices of the same bread, but it works.
 
 ### 4.3 No LLM Bypass
 
@@ -139,7 +133,7 @@ Tasks survive crashes and restarts:
 
 ## 6. Known Gaps
 
-See `PENDING.md` for the full list. Notable items:
+Notable items:
 
 | Gap | Impact | Priority |
 |-----|--------|----------|
@@ -156,7 +150,7 @@ See `PENDING.md` for the full list. Notable items:
 
 ```
 Cognitive Sandwich concept:       8/10  (genuinely innovative architectural insight)
-Design coherence:                  7/10  (task system fixes Rust's queue flaws)
+Design coherence:                  7/10  (task system fixes queue-before-LLM flaw)
 Implementation fidelity:           7/10  (matches design doc, some gaps)
 Code quality:                      7/10  (clean Go, modular, no unsafe)
 Resilience:                        5/10  (persistence good, no circuit breaker, single point on LLM)
@@ -165,11 +159,12 @@ Production readiness:              4/10  (no auth, no graceful shutdown of gorou
 
 ### Summary
 
-The Go migration is a significant improvement over the Rust version:
-- ✅ Fixed the queue-before-LLM design flaw (task system persists raw input first)
-- ✅ Simplified the pipeline set (8 focused pipelines vs 7 vague ones)
-- ✅ Cleaner concurrency model (goroutines + channels vs tokio + block_in_place)
-- ✅ Better TUI framework (Bubble Tea vs ratatui)
+Current state:
+- ✅ Task system persists raw input before LLM (crash-safe)
+- ✅ 8 focused pipelines (stocks, search, browse, music, todo, system, schedule...)
+- ✅ Goroutine + channel concurrency model
+- ✅ Bubble Tea v2 TUI
+- ✅ Self-learning feedback loop (learn.Engine with keyword-pipeline tracking)
 - ⚠️ Single LLM for both layers (acceptable tradeoff for local-first)
 - ⚠️ No tests yet (deferred)
 - ❌ No LLM fast-path for trivial commands (acceptable for now)

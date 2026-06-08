@@ -192,7 +192,7 @@ The LLM outputs a `confidence` field (0.0–1.0) with each classification:
 
 ## 5. Task System
 
-Replaces the old input/output queue architecture from the Rust version.
+Replaces the old input/output queue architecture. Tasks are persisted before any LLM call — crash-safe by design.
 
 ### Task Statuses
 

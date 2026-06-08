@@ -12,7 +12,7 @@ DHI (Deterministic Harness Intelligence) is a terminal-based AI operating system
 
 ### Running
 ```bash
-go build ./cmd/dhi && ./dhi
+go build -o build/dhi ./cmd/dhi && ./build/dhi
 # or
 go run ./cmd/dhi
 ```

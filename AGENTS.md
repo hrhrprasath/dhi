@@ -27,8 +27,8 @@ DHI is a Terminal AI OS inspired by Her (movie), Batman AI, and Jarvis/Ironman. 
 
 ### Building
 ```bash
-go build ./...          # Build all packages
-go build ./cmd/dhi      # Build binary only
+go build ./...               # Build all packages
+go build -o build/dhi ./cmd/dhi  # Build binary to build/ dir
 ```
 
 ### Running

@@ -1,5 +1,2 @@
-/target
-Cargo.lock
-**/*.rs.bk
-aura.db
 .data
+/build
