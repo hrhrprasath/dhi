@@ -22,14 +22,14 @@ type TimeParser interface {
 type DefaultParser struct{}
 
 var (
-	reIn    = regexp.MustCompile(`(?i)^in\s+(\d+)\s*(second|minute|min|hour|hr|day|week|month)s?\s*$`)
-	reAt    = regexp.MustCompile(`(?i)^(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
-	reEvery = regexp.MustCompile(`(?i)^(?:every|each)\s+(\d+)\s*(second|minute|min|hour|hr|day)s?\s*$`)
-	reDaily = regexp.MustCompile(`(?i)^(?:every\s+)?daily\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
-	reWeekly = regexp.MustCompile(`(?i)^(?:every\s+)?weekly\s+(?:on\s+\w+)?\s*(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
+	reIn       = regexp.MustCompile(`(?i)^in\s+(\d+)\s*(second|minute|min|hour|hr|day|week|month)s?\s*$`)
+	reAt       = regexp.MustCompile(`(?i)^(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
+	reEvery    = regexp.MustCompile(`(?i)^(?:every|each)\s+(\d+)\s*(second|minute|min|hour|hr|day)s?\s*$`)
+	reDaily    = regexp.MustCompile(`(?i)^(?:every\s+)?daily\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
+	reWeekly   = regexp.MustCompile(`(?i)^(?:every\s+)?weekly\s+(?:on\s+\w+)?\s*(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
 	reTomorrow = regexp.MustCompile(`(?i)^tomorrow\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
-	reWeekday = regexp.MustCompile(`(?i)^(?:every\s+)?weekdays?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
-	reWeekend = regexp.MustCompile(`(?i)^(?:every\s+)?weekends?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
+	reWeekday  = regexp.MustCompile(`(?i)^(?:every\s+)?weekdays?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
+	reWeekend  = regexp.MustCompile(`(?i)^(?:every\s+)?weekends?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$`)
 )
 
 func (p *DefaultParser) Parse(when string) (*Schedule, error) {

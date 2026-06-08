@@ -43,11 +43,11 @@ type intentResponse struct {
 }
 
 type Router struct {
-	client    *http.Client
-	model     string
-	endpoint  string
-	logger    *services.Logger
-	weights   WeightProvider
+	client   *http.Client
+	model    string
+	endpoint string
+	logger   *services.Logger
+	weights  WeightProvider
 }
 
 func NewRouter(model, endpoint string, logger *services.Logger) *Router {

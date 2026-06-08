@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"dhi_harness/internal/config"
-	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
 	"dhi_harness/internal/services"
 	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
+	"dhi_harness/internal/topic"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/textinput"
@@ -20,10 +20,10 @@ import (
 )
 
 func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
-	router *intent.Router, pipeExec *pipeline.Executor, convMgr *conversation.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, feedback FeedbackRecorder) *Model {
+	router *intent.Router, pipeExec *pipeline.Executor, topicMgr *topic.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, feedback FeedbackRecorder) *Model {
 
 	ti := textinput.New()
-	ti.Placeholder = " Type a command... (/log /logs /l → logs popup)"
+	ti.Placeholder = " Type a command... (/topic → topics /log → logs)"
 	ti.Prompt = "> "
 	ti.SetWidth(34)
 	focusCmd := ti.Focus()
@@ -35,8 +35,8 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 	cv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(10))
 	cv.SetContent("Start a conversation...")
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
-	ov := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
-	ov.SetContent("")
+	tv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
+
 	cp := progress.New(progress.WithWidth(21))
 	cp.Empty = '░'
 	cp.Full = '█'
@@ -54,47 +54,57 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 		statusPipelines = append(statusPipelines, pipelineEntry{Name: p, Status: "IDLE"})
 	}
 
-	return &Model{
-		cfg:        cfg,
-		logger:     logger,
-		taskMgr:   tm,
-		router:     router,
-		executor:   pipeExec,
-		convMgr:   convMgr,
-		sysSvc:    sysSvc,
-		todoMgr:   todoMgr,
-		feedback:  feedback,
-		textInput:  ti,
-		logView:    lv,
-		convView:   cv,
-		pipelineView: pv,
-		orbView:     ov,
-		cpuProgress: cp,
-		ramProgress: rp,
-		gpuProgress: gp,
-		pendingTasks: tm.CountByStatus(task.StatusPending),
-		waitingTasks: tm.CountByStatus(task.StatusWaiting),
-		focused:      focusInput,
-		pipelines:    statusPipelines,
-		routerStatus:    "OFFLINE",
-		logPopupVisible: false,
-		hostname:     metrics.Hostname,
-		kernel:       metrics.Kernel,
-		uptimeSec:    metrics.UptimeSec,
-		metrics:      metrics,
-		focusCmd:    focusCmd,
-		events:      make(chan interface{}, 200),
-		width:       80,
-		height:      30,
-		logEntries:  []string{"[SYSTEM][INFO] DHI Harness initializing..."},
+	m := &Model{
+		cfg:           cfg,
+		logger:        logger,
+		taskMgr:       tm,
+		router:        router,
+		executor:      pipeExec,
+		topicMgr:      topicMgr,
+		sysSvc:        sysSvc,
+		todoMgr:       todoMgr,
+		feedback:      feedback,
+		textInput:     ti,
+		logView:       lv,
+		convView:      cv,
+		pipelineView:  pv,
+		topicView:     tv,
+		cpuProgress:   cp,
+		ramProgress:   rp,
+		gpuProgress:   gp,
+		focused:       focusInput,
+		pipelines:     statusPipelines,
+		routerStatus:  "OFFLINE",
+		hostname:      metrics.Hostname,
+		kernel:        metrics.Kernel,
+		uptimeSec:     metrics.UptimeSec,
+		metrics:       metrics,
+		focusCmd:      focusCmd,
+		events:        make(chan interface{}, 200),
+		width:         80,
+		height:        30,
+		logEntries:    []string{"[SYSTEM][INFO] DHI Harness initializing..."},
 	}
+
+	m.refreshTopicFiltered()
+
+	cur := m.topicMgr.CurrentTopic()
+	if cur != nil {
+		turns := m.topicMgr.LoadTopicTurns(cur.ID)
+		for _, t := range turns {
+			m.conversations = append(m.conversations, conversationEntry{Input: t.Input, Response: stripMarkdown(t.Response)})
+		}
+		m.refreshConvContent()
+		m.convView.GotoBottom()
+	}
+
+	return m
 }
 
 func (m *Model) Init() tea.Cmd {
 	go m.consumerLoop()
 	go m.healthLoop()
 	go m.loggerForwardLoop()
-	go m.fireLoop()
 	m.taskMgr.StartLooper(60 * time.Second)
 
 	go func() {
@@ -125,6 +135,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.handleKeyPress(msg)
 		return m, tea.Batch(cmd, m.eventPoller())
 
+	case tea.MouseClickMsg:
+		cmd := m.handleMouseClick(msg.Mouse())
+		return m, tea.Batch(cmd, m.eventPoller())
+
+	case tea.MouseWheelMsg:
+		m.handleMouseWheel(msg.Mouse())
+		return m, m.eventPoller()
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -136,25 +154,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logView.SetHeight(lh)
 		m.convView.SetWidth(vw)
 		m.convView.SetHeight(ch)
+		m.topicView.SetWidth(vw - 2)
+		m.topicView.SetHeight(ch)
 		m.textInput.SetWidth(rw - 16)
-		m.orbView.SetWidth(26)
-		m.orbView.SetHeight(m.orbHeight())
 		m.refreshLogContent()
-		m.refreshOrbContent()
-		return m, m.eventPoller()
-
-	case fireTickMsg:
-		m.advanceFire()
-		m.refreshOrbContent()
 		return m, m.eventPoller()
 
 	case tickMsg:
-		m.frame++
 		m.uptimeSec++
-		m.pendingTasks = m.taskMgr.CountByStatus(task.StatusPending)
-		m.waitingTasks = m.taskMgr.CountByStatus(task.StatusWaiting)
 		m.metrics = m.sysSvc.GetMetrics()
 		m.refreshLogContent()
+		m.refreshTopicListContent()
 		return m, tea.Batch(
 			m.eventPoller(),
 			tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
@@ -200,6 +210,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshLogContent()
 		m.refreshConvContent()
 		m.refreshPipelineContent()
+		m.refreshTopicListContent()
 		return m, m.eventPoller()
 
 	default:

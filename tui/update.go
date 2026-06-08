@@ -3,13 +3,14 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/services"
 	"dhi_harness/internal/task"
+	"dhi_harness/internal/topic"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -24,6 +25,10 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 
 	case msg.Code == tea.KeyEscape:
+		if m.topicPopupVisible {
+			m.toggleTopicPopup()
+			return nil
+		}
 		if m.logPopupVisible {
 			m.logPopupVisible = false
 			if m.focused == focusLogs {
@@ -34,6 +39,20 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case msg.Code == tea.KeyTab:
+		if m.topicPopupVisible {
+			switch m.focused {
+			case focusInput:
+				m.focused = focusTopics
+				m.textInput.Blur()
+				return nil
+			case focusTopics:
+				m.focused = focusInput
+				return m.textInput.Focus()
+			default:
+				m.focused = focusInput
+				return m.textInput.Focus()
+			}
+		}
 		if m.focused == focusInput {
 			val := m.textInput.Value()
 			if strings.HasPrefix(val, "/") {
@@ -63,6 +82,9 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			}
 			m.focused = focusInput
 			return m.textInput.Focus()
+		case focusTopics:
+			m.focused = focusInput
+			return m.textInput.Focus()
 		}
 
 	case msg.Code == tea.KeyEnter:
@@ -71,6 +93,19 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 
 			if len(m.slashMatches) > 0 && strings.HasPrefix(input, "/") && input != m.slashMatches[m.slashIndex] {
 				input = m.slashMatches[m.slashIndex]
+			}
+
+			if m.topicPopupVisible {
+				m.textInput.SetValue("")
+				// Clear filter text so input is the selection number
+				m.topicFilter = ""
+				m.refreshTopicFiltered()
+				// If input is a number, switch by position in full topic list
+				if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(m.topicFiltered) {
+					m.toggleTopicPopup()
+					m.handleSwitchTopic(m.topicFiltered[n-1].ID)
+				}
+				return nil
 			}
 
 			m.textInput.SetValue("")
@@ -94,12 +129,31 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 				}
 				return nil
 			}
+			if input == "/new" {
+				m.handleNewTopic()
+				return nil
+			}
+			if input == "/fork" {
+				m.handleForkTopic()
+				return nil
+			}
+			if input == "/resume" {
+				m.handleResumeTopic()
+				return nil
+			}
+			if input == "/topic" || input == "/topics" {
+				m.toggleTopicPopup()
+				return nil
+			}
+			if strings.HasPrefix(input, "/topic ") {
+				m.handleSwitchTopic(strings.TrimSpace(strings.TrimPrefix(input, "/topic ")))
+				return nil
+			}
 			m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
 			if input != "" {
 				m.lastSubmitted = input
 				if m.routerOnline {
 					m.taskMgr.AddOnce(input)
-					m.pendingTasks = m.taskMgr.CountByStatus(task.StatusPending)
 				}
 			}
 		}
@@ -111,6 +165,8 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.logView.ScrollUp(3)
 		case focusConv:
 			m.convView.ScrollUp(3)
+		case focusTopics:
+			m.topicView.ScrollUp(3)
 		case focusInput:
 			if m.textInput.Value() == "" && m.lastSubmitted != "" {
 				m.textInput.SetValue(m.lastSubmitted)
@@ -125,6 +181,8 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.logView.ScrollDown(3)
 		case focusConv:
 			m.convView.ScrollDown(3)
+		case focusTopics:
+			m.topicView.ScrollDown(3)
 		}
 		return nil
 
@@ -134,6 +192,8 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.logView.ScrollUp(m.logView.Height())
 		case focusConv:
 			m.convView.ScrollUp(m.convView.Height())
+		case focusTopics:
+			m.topicView.ScrollUp(m.topicView.Height())
 		}
 		return nil
 
@@ -143,6 +203,8 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.logView.ScrollDown(m.logView.Height())
 		case focusConv:
 			m.convView.ScrollDown(m.convView.Height())
+		case focusTopics:
+			m.topicView.ScrollDown(m.topicView.Height())
 		}
 		return nil
 	}
@@ -150,9 +212,166 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	if m.focused == focusInput {
 		var cmd tea.Cmd
 		m.textInput, cmd = m.textInput.Update(msg)
+
+		// If topic popup is visible, update filter on each keystroke
+		if m.topicPopupVisible {
+			m.topicFilter = m.textInput.Value()
+			m.refreshTopicFiltered()
+		}
+
 		return cmd
 	}
 	return nil
+}
+
+// ─── Mouse Handling ───
+
+func (m *Model) handleMouseWheel(mouse tea.Mouse) {
+	if mouse.Button == tea.MouseWheelUp {
+		switch m.focused {
+		case focusLogs:
+			m.logView.ScrollUp(3)
+		case focusConv:
+			m.convView.ScrollUp(3)
+		case focusTopics:
+			m.topicView.ScrollUp(3)
+		}
+	} else if mouse.Button == tea.MouseWheelDown {
+		switch m.focused {
+		case focusLogs:
+			m.logView.ScrollDown(3)
+		case focusConv:
+			m.convView.ScrollDown(3)
+		case focusTopics:
+			m.topicView.ScrollDown(3)
+		}
+	}
+}
+
+func (m *Model) handleMouseClick(mouse tea.Mouse) tea.Cmd {
+	if mouse.Button != tea.MouseLeft {
+		return nil
+	}
+	// Left panel is ~30 chars wide
+	if mouse.X < 30 {
+		return nil
+	}
+	// Right panel — topic popup click handling
+	if m.topicPopupVisible {
+		itemY := mouse.Y - 2 - 1
+		if itemY >= 0 && itemY < len(m.topicFiltered) {
+			m.toggleTopicPopup()
+			m.handleSwitchTopic(m.topicFiltered[itemY].ID)
+		}
+	}
+	return nil
+}
+
+// ─── Topic Popup ───
+
+func (m *Model) toggleTopicPopup() {
+	m.topicPopupVisible = !m.topicPopupVisible
+	if m.topicPopupVisible {
+		m.topicFilter = ""
+		m.textInput.SetValue("")
+		m.textInput.Placeholder = " Search topics (type to filter, Enter number to select)"
+		m.refreshTopicFiltered()
+		m.focused = focusInput
+		m.textInput.Focus()
+		m.topicView.GotoBottom()
+	} else {
+		m.textInput.Placeholder = " Type a command... (/topic → topics /log → logs)"
+		m.focused = focusInput
+		m.textInput.Focus()
+	}
+}
+
+// ─── Topic Commands ───
+
+func (m *Model) handleNewTopic() {
+	cur := m.topicMgr.CurrentTopic()
+	if cur != nil {
+		m.logger.Info("TOPIC", fmt.Sprintf("Creating new topic (was: %s)", cur.Title))
+	}
+
+	t := m.topicMgr.CreateTopic("Topic N")
+	m.conversations = nil
+	m.refreshConvContent()
+	m.convView.GotoBottom()
+
+	msg := fmt.Sprintf("Started new topic: %s (%s)", t.Title, t.ID)
+	m.logger.Info("TOPIC", msg)
+	m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+}
+
+func (m *Model) handleForkTopic() {
+	cur := m.topicMgr.CurrentTopic()
+	if cur == nil {
+		return
+	}
+
+	t := m.topicMgr.ForkTopic("Fork of " + cur.Title)
+
+	turns := m.topicMgr.LoadTopicTurns(t.ID)
+	m.conversations = nil
+	for _, turn := range turns {
+		m.conversations = append(m.conversations, conversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)})
+	}
+	m.refreshConvContent()
+	m.convView.GotoBottom()
+
+	msg := fmt.Sprintf("Forked topic: %s → %s", cur.Title, t.Title)
+	m.logger.Info("TOPIC", msg)
+	m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+}
+
+func (m *Model) handleResumeTopic() {
+	t := m.topicMgr.ResumeTopic()
+	if t == nil {
+		msg := "No previous topic to resume"
+		m.logger.Info("TOPIC", msg)
+		m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+		return
+	}
+
+	turns := m.topicMgr.LoadTopicTurns(t.ID)
+	m.conversations = nil
+	for _, turn := range turns {
+		m.conversations = append(m.conversations, conversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)})
+	}
+	m.refreshConvContent()
+	m.convView.GotoBottom()
+
+	msg := fmt.Sprintf("Resumed topic: %s (%s)", t.Title, t.ID)
+	m.logger.Info("TOPIC", msg)
+	m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+}
+
+func (m *Model) handleSwitchTopic(arg string) {
+	topics := m.topicMgr.ListTopics()
+
+	if n, err := strconv.Atoi(arg); err == nil && n >= 1 && n <= len(topics) {
+		arg = topics[n-1].ID
+	}
+
+	if m.topicMgr.SwitchToTopic(arg) {
+		cur := m.topicMgr.CurrentTopic()
+		turns := m.topicMgr.LoadTopicTurns(cur.ID)
+		m.conversations = nil
+		for _, turn := range turns {
+			m.conversations = append(m.conversations, conversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)})
+		}
+		m.refreshConvContent()
+		m.convView.GotoBottom()
+
+		msg := fmt.Sprintf("Switched to topic: %s (%d turns)", cur.Title, len(turns))
+		m.logger.Info("TOPIC", msg)
+		m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+	} else {
+		msg := fmt.Sprintf("Topic not found: %s", arg)
+		m.logger.Info("TOPIC", msg)
+		m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+	}
 }
 
 func (m *Model) toggleLogPopup() {
@@ -181,14 +400,6 @@ func (m *Model) healthLoop() {
 		time.Sleep(30 * time.Second)
 		online := m.router.HealthCheck()
 		m.events <- routerStatusMsg{online: online}
-	}
-}
-
-func (m *Model) fireLoop() {
-	ticker := time.NewTicker(40 * time.Millisecond)
-	defer ticker.Stop()
-	for range ticker.C {
-		m.events <- fireTickMsg{}
 	}
 }
 
@@ -227,8 +438,7 @@ func (m *Model) processTasks() {
 		return
 	}
 
-	summary := m.convMgr.LoadSummary()
-	summaryText := m.convMgr.FormatForPrompt(&summary)
+	summaryText := m.topicMgr.FormatForPrompt()
 
 	todos := m.todoMgr.FormatForPrompt()
 	if !strings.Contains(todos, "No todos") && !strings.Contains(todos, "No pending") {
@@ -261,10 +471,10 @@ func (m *Model) processTasks() {
 func (m *Model) handleConversation(t *task.Task, summaryText string, intentResult *intent.ParsedIntent) {
 	m.logger.Info("CONSUMER", fmt.Sprintf("Intent: %s — chatting", intentResult.Event))
 
-	terms := conversation.ExtractSearchTerms(intentResult.Params)
+	terms := topic.ExtractSearchTerms(intentResult.Params)
 	searchResults := ""
 	if len(terms) > 0 {
-		sr, _ := conversation.SearchPastData(terms)
+		sr, _ := topic.SearchPastData(terms)
 		searchResults = sr
 	}
 
@@ -280,7 +490,12 @@ func (m *Model) handleConversation(t *task.Task, summaryText string, intentResul
 	response = cleanResponse(response, t.RawInput)
 
 	m.logger.Info("DHI", response)
-	m.convMgr.UpdateSummary(t.RawInput, response)
+
+	cur := m.topicMgr.CurrentTopic()
+	if cur != nil {
+		m.topicMgr.AppendTurn(cur.ID, t.RawInput, response)
+	}
+
 	m.events <- convMsg{input: t.RawInput, response: response}
 
 	if m.feedback != nil {
@@ -328,7 +543,12 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 	}
 
 	m.logger.Info("DHI", reply)
-	m.convMgr.UpdateSummary(t.RawInput, reply)
+
+	cur := m.topicMgr.CurrentTopic()
+	if cur != nil {
+		m.topicMgr.AppendTurn(cur.ID, t.RawInput, reply)
+	}
+
 	m.events <- convMsg{input: t.RawInput, response: reply}
 	m.events <- pipelineStatusMsg{name: pipelineName, status: "IDLE"}
 	m.logger.Info("EXECUTOR", fmt.Sprintf("Pipeline %s completed", intentResult.Event))
@@ -353,12 +573,19 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 	})
 }
 
+// ─── Slash Completion ───
+
 var slashCommands = []string{
 	"/good",
 	"/bad",
 	"/log",
 	"/logs",
 	"/quit",
+	"/new",
+	"/fork",
+	"/resume",
+	"/topic",
+	"/topics",
 }
 
 func (m *Model) computeSlashMatches(prefix string) {
@@ -367,9 +594,23 @@ func (m *Model) computeSlashMatches(prefix string) {
 	if !strings.HasPrefix(prefix, "/") || prefix == "/" {
 		return
 	}
+	if strings.HasPrefix(prefix, "/topic ") || prefix == "/topic" {
+		m.computeTopicMatches(prefix)
+		return
+	}
 	for _, cmd := range slashCommands {
 		if strings.HasPrefix(cmd, prefix) && cmd != prefix {
 			m.slashMatches = append(m.slashMatches, cmd)
+		}
+	}
+}
+
+func (m *Model) computeTopicMatches(prefix string) {
+	topics := m.topicMgr.ListTopics()
+	for i := range topics {
+		label := fmt.Sprintf("/topic %d", i+1)
+		if strings.HasPrefix(label, prefix) {
+			m.slashMatches = append(m.slashMatches, label)
 		}
 	}
 }

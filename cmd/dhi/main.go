@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"dhi_harness/internal/config"
-	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/learn"
 	"dhi_harness/internal/pipeline"
@@ -13,6 +12,7 @@ import (
 	"dhi_harness/internal/summarizer"
 	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
+	"dhi_harness/internal/topic"
 	"dhi_harness/tui"
 
 	"charm.land/bubbletea/v2"
@@ -29,7 +29,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: log file: %v\n", err)
 	}
 
-	convMgr := conversation.NewManager(".data")
 	taskMgr := task.NewManager(".data", nil)
 
 	router := intent.NewRouter(cfg.LLM.Model, cfg.LLM.Endpoint, logger)
@@ -43,10 +42,11 @@ func main() {
 	logger.Info("SYSTEM", fmt.Sprintf("Loaded %d pipelines", pipeMgr.PipelineCount()))
 	logger.Info("LEARN", fmt.Sprintf("Learning engine loaded with %d pipeline stats", len(learningEngine.Stats())))
 
+	topicMgr := topic.NewManager(".data")
 	sysSvc := services.NewSystemService()
 	todoMgr := todo.NewManager(".data")
 
-	model := tui.NewModel(cfg, logger, taskMgr, router, exec, convMgr, sysSvc, todoMgr, learningEngine)
+	model := tui.NewModel(cfg, logger, taskMgr, router, exec, topicMgr, sysSvc, todoMgr, learningEngine)
 
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {

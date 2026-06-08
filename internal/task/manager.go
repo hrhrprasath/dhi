@@ -14,7 +14,7 @@ import (
 type Type string
 
 const (
-	TypeOnce     Type = "once"
+	TypeOnce      Type = "once"
 	TypeScheduled Type = "scheduled"
 )
 
@@ -47,10 +47,10 @@ type ScheduleEntry struct {
 }
 
 type Manager struct {
-	mu      sync.Mutex
-	tasks   []Task
-	path    string
-	parser  TimeParser
+	mu         sync.Mutex
+	tasks      []Task
+	path       string
+	parser     TimeParser
 	looperStop chan struct{}
 }
 
@@ -61,8 +61,8 @@ func NewManager(dataDir string, parser TimeParser) *Manager {
 	dir := filepath.Join(dataDir, "tasks")
 	os.MkdirAll(dir, 0755)
 	m := &Manager{
-		path:   filepath.Join(dir, "tasks.json"),
-		parser: parser,
+		path:       filepath.Join(dir, "tasks.json"),
+		parser:     parser,
 		looperStop: make(chan struct{}),
 	}
 	m.tasks = m.load()

@@ -160,5 +160,5 @@ func (l *Logger) Recent(n int) []LogEntry {
 	return out
 }
 
-func (sub *LogSubscriber) Ch() <-chan LogEntry { return sub.ch }
+func (sub *LogSubscriber) Ch() <-chan LogEntry   { return sub.ch }
 func (sub *LogSubscriber) Done() <-chan struct{} { return sub.done }

@@ -2,12 +2,12 @@ package tui
 
 import (
 	"dhi_harness/internal/config"
-	"dhi_harness/internal/conversation"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
 	"dhi_harness/internal/services"
 	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
+	"dhi_harness/internal/topic"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/textinput"
@@ -28,6 +28,7 @@ const (
 	focusLogs focusPanel = iota
 	focusInput
 	focusConv
+	focusTopics
 )
 
 type conversationEntry struct {
@@ -36,7 +37,6 @@ type conversationEntry struct {
 }
 
 type tickMsg struct{}
-type fireTickMsg struct{}
 type routerStatusMsg struct{ online bool }
 type logMsg struct{ message string }
 type convMsg struct {
@@ -70,38 +70,36 @@ var (
 )
 
 type Model struct {
-	cfg       *config.Config
-	logger    *services.Logger
-	taskMgr   *task.Manager
-	router    *intent.Router
-	executor  *pipeline.Executor
-	convMgr   *conversation.Manager
-	sysSvc    *services.SystemService
-	todoMgr   *todo.Manager
-	feedback  FeedbackRecorder
+	cfg      *config.Config
+	logger   *services.Logger
+	taskMgr  *task.Manager
+	router   *intent.Router
+	executor *pipeline.Executor
+	topicMgr *topic.Manager
+	sysSvc   *services.SystemService
+	todoMgr  *todo.Manager
+	feedback FeedbackRecorder
 
 	textInput    textinput.Model
 	logView      viewport.Model
 	convView     viewport.Model
 	pipelineView viewport.Model
-	orbView      viewport.Model
+	topicView    viewport.Model
 	cpuProgress  progress.Model
 	ramProgress  progress.Model
 	gpuProgress  progress.Model
-
-	frame int
-
-	firePixels []int
 
 	conversations  []conversationEntry
 	logEntries     []string
 	routerOnline   bool
 	routerStatus   string
 	pipelines      []pipelineEntry
-	pendingTasks   int
-	waitingTasks   int
 	focused        focusPanel
 	logPopupVisible bool
+
+	topicPopupVisible bool
+	topicFilter       string
+	topicFiltered     []topic.Topic
 
 	hostname  string
 	kernel    string
@@ -114,8 +112,8 @@ type Model struct {
 	width    int
 	height   int
 
-	lastInput string
-	lastIntent *intent.ParsedIntent
+	lastInput     string
+	lastIntent    *intent.ParsedIntent
 	lastSubmitted string
 
 	slashMatches []string

@@ -9,12 +9,12 @@ import (
 )
 
 type PipelineStats struct {
-	Name           string    `json:"name"`
-	TotalCalls     int       `json:"total_calls"`
-	SuccessCount   int       `json:"success_count"`
-	FailCount      int       `json:"fail_count"`
-	TotalConfidence float64  `json:"total_confidence"`
-	LastUsed       time.Time `json:"last_used"`
+	Name            string    `json:"name"`
+	TotalCalls      int       `json:"total_calls"`
+	SuccessCount    int       `json:"success_count"`
+	FailCount       int       `json:"fail_count"`
+	TotalConfidence float64   `json:"total_confidence"`
+	LastUsed        time.Time `json:"last_used"`
 }
 
 type ConfidenceBucket struct {
@@ -43,12 +43,12 @@ type FeedbackEntry struct {
 }
 
 type LearningData struct {
-	Version           int                            `json:"version"`
-	PipelineStats     map[string]*PipelineStats      `json:"pipeline_stats"`
-	Calibration       map[string][]ConfidenceBucket   `json:"calibration"`
-	KeywordPipelines  map[string]map[string]*KeywordStat `json:"keyword_pipelines"`
-	FeedbackLog       []FeedbackEntry                `json:"feedback_log"`
-	LastUpdated       time.Time                      `json:"last_updated"`
+	Version          int                                `json:"version"`
+	PipelineStats    map[string]*PipelineStats          `json:"pipeline_stats"`
+	Calibration      map[string][]ConfidenceBucket      `json:"calibration"`
+	KeywordPipelines map[string]map[string]*KeywordStat `json:"keyword_pipelines"`
+	FeedbackLog      []FeedbackEntry                    `json:"feedback_log"`
+	LastUpdated      time.Time                          `json:"last_updated"`
 }
 
 const maxFeedbackLog = 500

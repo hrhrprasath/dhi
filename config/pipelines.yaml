@@ -11,11 +11,12 @@ pipelines:
       script: "scripts/stock {company}"
 
   - name: search_inline
-    description: Search web and display results in terminal (search, find, what is, how to, google)
+    description: Search web and display results inline — use for any question that needs live/fresh information (search, find, what is, how to, google, tell me about, tell me, summarize, explain, what is, who is, when did, where is, lookup, research)
     weight: 0.7
     params:
       - name: query
         required: true
+        extract_hint: "Extract the search query or topic from the user input (e.g., 'latest AI news 2026', 'how to cook pasta', 'tell me about black holes')"
     action:
       type: bash
       summarize: true

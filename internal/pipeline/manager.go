@@ -9,12 +9,12 @@ import (
 )
 
 type Pipeline struct {
-	Name        string              `yaml:"name"`
-	Description string              `yaml:"description"`
-	Weight      float64             `yaml:"weight"`
-	Keywords    []string            `yaml:"keywords,omitempty"`
-	Params      []ParamDefinition   `yaml:"params"`
-	Action      PipelineAction      `yaml:"action"`
+	Name        string            `yaml:"name"`
+	Description string            `yaml:"description"`
+	Weight      float64           `yaml:"weight"`
+	Keywords    []string          `yaml:"keywords,omitempty"`
+	Params      []ParamDefinition `yaml:"params"`
+	Action      PipelineAction    `yaml:"action"`
 }
 
 type ParamDefinition struct {
@@ -25,17 +25,17 @@ type ParamDefinition struct {
 }
 
 type PipelineAction struct {
-	Type      string            `yaml:"type"`
-	URL       string            `yaml:"url,omitempty"`
-	Method    string            `yaml:"method,omitempty"`
-	Command   string            `yaml:"command,omitempty"`
-	Args      []string          `yaml:"args,omitempty"`
-	Script    string            `yaml:"script,omitempty"`
-	Target    string            `yaml:"target,omitempty"`
-	Handler   string            `yaml:"handler,omitempty"`
-	Auth      *HTTPAuth         `yaml:"auth,omitempty"`
-	Summarize     bool `yaml:"summarize"`
-	IgnoreContext bool `yaml:"summarize_ignore_context"`
+	Type          string    `yaml:"type"`
+	URL           string    `yaml:"url,omitempty"`
+	Method        string    `yaml:"method,omitempty"`
+	Command       string    `yaml:"command,omitempty"`
+	Args          []string  `yaml:"args,omitempty"`
+	Script        string    `yaml:"script,omitempty"`
+	Target        string    `yaml:"target,omitempty"`
+	Handler       string    `yaml:"handler,omitempty"`
+	Auth          *HTTPAuth `yaml:"auth,omitempty"`
+	Summarize     bool      `yaml:"summarize"`
+	IgnoreContext bool      `yaml:"summarize_ignore_context"`
 }
 
 type HTTPAuth struct {

@@ -145,34 +145,29 @@ func ClassifyPrompt(userInput, summaryText string, calibrationBlock string, keyw
 CONVERSATION HISTORY:
 %s
 
-CLASSIFIER:
-Default action is CONVERSATION. Only use EXECUTE_XXX for clear actionable requests.
+	CLASSIFIER:
+	Default action is CONVERSATION. Only use EXECUTE_XXX for clear actionable requests.
 
-RULE: The "description" field must be a brief, specific summary of the action for this particular user query.
-  Good:  "description": "Search for recent news about Claude Opus"
-  Bad:   "description": "Search web and display results in terminal"
-  Good:  "description": "Fetch Nifty 50 stock price"
-  Bad:   "description": "Stock queries with news"
-  Good:  "description": "Greet the user"
-  Bad:   "description": "CONVERSATION"
+	EXECUTE_XXX pipelines are defined below (event, description, weight, keywords, params). Use them when the user's request clearly matches a pipeline's purpose. Do NOT invent pipeline names — only use the events listed below.
 
-CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you are about this classification.
-  > 0.9: Very clear explicit request matching a specific pipeline
-  > 0.8: Clear actionable request
-  > 0.6: Likely actionable but some ambiguity
-  < 0.6: Ambiguous, default to CONVERSATION
-  Example: "buy apple stock" -> {"event": "EXECUTE_STOCKS", "params": {"company": "apple"}, "description": "Fetch Apple stock price and news", "confidence": 0.95}
-  Example: "what was AAPL doing yesterday?" -> {"event": "EXECUTE_STOCKS", "params": {"company": "AAPL"}, "description": "Check Apple stock performance", "confidence": 0.85}
-  Example: "how are you?" -> {"event": "CONVERSATION", "params": {}, "description": "Respond to greeting", "confidence": 0.55}
+	Internal actions (no EXECUTE_ prefix):
+	- CONVERSATION: for chat, questions, opinions, creative content, small talk, or when no pipeline matches. params: search_terms (optional string array — key nouns/entities to search past data)
+	  Examples:
+	  "how are you?" -> {"event": "CONVERSATION", "params": {}, "description": "Respond to greeting", "confidence": 0.55}
+	  "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke", "confidence": 0.55}
+	  "what did we discuss about X?" -> {"event": "CONVERSATION", "params": {"search_terms": ["X"]}, "description": "Retrieve past discussion about X", "confidence": 0.65}
 
-TYPES:
-- CONVERSATION: params: search_terms (optional string array — key nouns/entities to search past data)
-  Examples:
-  "hello" -> {"event": "CONVERSATION", "params": {}, "description": "Greet the user warmly", "confidence": 0.55}
-  "what did we discuss about AAPL?" -> {"event": "CONVERSATION", "params": {"search_terms": ["AAPL", "apple stock"]}, "description": "Retrieve past discussion about AAPL", "confidence": 0.65}
-  "remind me what I asked about nifty" -> {"event": "CONVERSATION", "params": {"search_terms": ["nifty", "nifty50"]}, "description": "Look up previous nifty-related queries", "confidence": 0.60}
-  "who is PM of india" -> {"event": "CONVERSATION", "params": {}, "description": "Answer user's knowledge question", "confidence": 0.55}
-  "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke", "confidence": 0.55}
+	RULE: The "description" field must be a brief, specific summary of the action for this particular user query.
+	  Good:  "description": "Greet the user"
+	  Bad:   "description": "CONVERSATION"
+	  Good:  "description": "Add milk to the shopping list"
+	  Bad:   "description": "Todo queries with actions"
+
+	CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you are about this classification.
+	  > 0.9: Very clear explicit request matching a specific pipeline
+	  > 0.8: Clear actionable request
+	  > 0.6: Likely actionable but some ambiguity
+	  < 0.6: Ambiguous, default to CONVERSATION
 
 %[4]s%[5]s%[6]s
 

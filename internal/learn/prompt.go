@@ -34,10 +34,10 @@ func (e *Engine) BuildCalibrationBlock() string {
 	defer e.mu.Unlock()
 
 	type entry struct {
-		name    string
+		name     string
 		accuracy float64
-		calls   int
-		trend   string
+		calls    int
+		trend    string
 	}
 
 	var entries []entry

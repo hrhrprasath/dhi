@@ -12,8 +12,8 @@ import (
 type SystemService struct{}
 
 type SystemMetrics struct {
-	CPU       float64
-	RAMUsedMB uint64
+	CPU        float64
+	RAMUsedMB  uint64
 	RAMTotalMB uint64
 	UptimeSec  uint64
 	Hostname   string
