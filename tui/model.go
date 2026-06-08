@@ -20,7 +20,7 @@ import (
 )
 
 func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
-	router *intent.Router, pipeExec *pipeline.Executor, convMgr *conversation.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager) *Model {
+	router *intent.Router, pipeExec *pipeline.Executor, convMgr *conversation.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, feedback FeedbackRecorder) *Model {
 
 	ti := textinput.New()
 	ti.Placeholder = " Type a command... (/log /logs /l → logs popup)"
@@ -63,6 +63,7 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 		convMgr:   convMgr,
 		sysSvc:    sysSvc,
 		todoMgr:   todoMgr,
+		feedback:  feedback,
 		textInput:  ti,
 		logView:    lv,
 		convView:   cv,

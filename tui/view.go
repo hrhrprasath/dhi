@@ -188,13 +188,34 @@ func (m *Model) renderInputBlock(logW int) string {
 		onlineColor = greenColor
 	}
 	status := lipgloss.NewStyle().Foreground(onlineColor).Render(onlineStr)
-	return style.Width(logW).Render(
-		lipgloss.JoinHorizontal(lipgloss.Bottom,
+
+	var content string
+	if len(m.slashMatches) > 0 {
+		suggestions := make([]string, len(m.slashMatches))
+		for i, s := range m.slashMatches {
+			if i == m.slashIndex {
+				suggestions[i] = lipgloss.NewStyle().Foreground(accentColor).Underline(true).Render(s)
+			} else {
+				suggestions[i] = lipgloss.NewStyle().Foreground(dimColor).Render(s)
+			}
+		}
+		help := lipgloss.NewStyle().Foreground(dimColor).Render(" TAB cycle · ENTER select")
+		content = lipgloss.JoinVertical(lipgloss.Left,
+			lipgloss.JoinHorizontal(lipgloss.Bottom,
+				m.textInput.View(),
+				"  ",
+				status,
+			),
+			"  "+strings.Join(suggestions, "  ")+"  "+help,
+		)
+	} else {
+		content = lipgloss.JoinHorizontal(lipgloss.Bottom,
 			m.textInput.View(),
 			"  ",
 			status,
-		),
-	)
+		)
+	}
+	return style.Width(logW).Render(content)
 }
 
 // ─── Fire Animation (port of lamp.py) ───

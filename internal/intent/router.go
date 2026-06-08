@@ -22,6 +22,13 @@ type ParsedIntent struct {
 	Confidence  float64         `json:"confidence"`
 }
 
+type WeightProvider interface {
+	BuildWeightLine(pipelineName string, baseWeight float64) string
+	BuildCalibrationBlock() string
+	BuildKeywordBlock(userInput string, pipelineKeywords map[string][]string) string
+	CalibrateWithEvent(rawConfidence float64, event string) float64
+}
+
 type intentRequest struct {
 	Model  string          `json:"model"`
 	Prompt string          `json:"prompt"`
@@ -36,10 +43,11 @@ type intentResponse struct {
 }
 
 type Router struct {
-	client   *http.Client
-	model    string
-	endpoint string
-	logger   *services.Logger
+	client    *http.Client
+	model     string
+	endpoint  string
+	logger    *services.Logger
+	weights   WeightProvider
 }
 
 func NewRouter(model, endpoint string, logger *services.Logger) *Router {
@@ -52,9 +60,44 @@ func NewRouter(model, endpoint string, logger *services.Logger) *Router {
 	}
 }
 
+func (r *Router) SetWeightProvider(wp WeightProvider) {
+	r.weights = wp
+}
+
+func (r *Router) buildWeightLines() map[string]string {
+	if r.weights == nil {
+		return nil
+	}
+	pipelines := prompt.LoadPipelineInfos()
+	lines := make(map[string]string, len(pipelines))
+	for _, p := range pipelines {
+		wl := r.weights.BuildWeightLine(p.Name, p.Weight)
+		if wl != "" {
+			lines[strings.ToLower(p.Name)] = wl
+		}
+	}
+	return lines
+}
+
 func (r *Router) Route(userInput, summaryText string) (*ParsedIntent, error) {
 	r.logger.Info("ROUTER", fmt.Sprintf("User input: %s", userInput))
-	p := prompt.ClassifyPrompt(userInput, summaryText)
+
+	calBlock := ""
+	keywordBlock := ""
+	weightLines := r.buildWeightLines()
+	if r.weights != nil {
+		calBlock = r.weights.BuildCalibrationBlock()
+		pipelines := prompt.LoadPipelineInfos()
+		pipelineKeywords := make(map[string][]string)
+		for _, p := range pipelines {
+			if len(p.Keywords) > 0 {
+				pipelineKeywords[strings.ToLower(p.Name)] = p.Keywords
+			}
+		}
+		keywordBlock = r.weights.BuildKeywordBlock(userInput, pipelineKeywords)
+	}
+
+	p := prompt.ClassifyPrompt(userInput, summaryText, calBlock, keywordBlock, weightLines)
 	r.savePrompt(p)
 
 	req := intentRequest{
@@ -89,6 +132,14 @@ func (r *Router) Route(userInput, summaryText string) (*ParsedIntent, error) {
 	parsed, err := parseJSON(ollamaResp.Response)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse intent: %w", err)
+	}
+
+	if r.weights != nil {
+		original := parsed.Confidence
+		parsed.Confidence = r.weights.CalibrateWithEvent(parsed.Confidence, parsed.Event)
+		if parsed.Confidence != original {
+			r.logger.Info("ROUTER", fmt.Sprintf("Calibrated confidence: %.2f → %.2f", original, parsed.Confidence))
+		}
 	}
 
 	r.logger.Info("ROUTER", fmt.Sprintf("Intent: %s (confidence: %.2f)", parsed.Event, parsed.Confidence))

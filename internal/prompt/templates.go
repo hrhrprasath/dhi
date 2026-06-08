@@ -34,13 +34,20 @@ COMMUNICATION STYLE:
 - Never fabricate facts, model names, versions, or release dates
 - If unable to help, politely explains why and offers alternatives`
 
-func BuildSchema() string {
+func BuildSchema(weightLines map[string]string) string {
 	pipelines := LoadPipelineInfos()
 	var sb strings.Builder
 	for _, p := range pipelines {
 		event := fmt.Sprintf("EXECUTE_%s", strings.ToUpper(p.Name))
 		sb.WriteString(fmt.Sprintf("event: %s\ndescription: %s\n", event, p.Description))
-		sb.WriteString(fmt.Sprintf("weight: %.1f (higher = prioritize when ambiguous)\n", p.Weight))
+		if wl, ok := weightLines[strings.ToLower(p.Name)]; ok && wl != "" {
+			sb.WriteString(wl + "\n")
+		} else {
+			sb.WriteString(fmt.Sprintf("weight: %.1f (higher = prioritize when ambiguous)\n", p.Weight))
+		}
+		if len(p.Keywords) > 0 {
+			sb.WriteString(fmt.Sprintf("keywords: %s\n", strings.Join(p.Keywords, ", ")))
+		}
 
 		var params []string
 		for _, param := range p.Params {
@@ -121,8 +128,16 @@ func exampleValue(name string) string {
 	}
 }
 
-func ClassifyPrompt(userInput, summaryText string) string {
-	schema := BuildSchema()
+func ClassifyPrompt(userInput, summaryText string, calibrationBlock string, keywordBlock string, weightLines map[string]string) string {
+	schema := BuildSchema(weightLines)
+	cal := ""
+	if calibrationBlock != "" {
+		cal = "\n" + calibrationBlock
+	}
+	kw := ""
+	if keywordBlock != "" {
+		kw = keywordBlock
+	}
 	return fmt.Sprintf(`%s
 
 %s
@@ -159,12 +174,12 @@ TYPES:
   "who is PM of india" -> {"event": "CONVERSATION", "params": {}, "description": "Answer user's knowledge question", "confidence": 0.55}
   "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke", "confidence": 0.55}
 
-%[4]s
+%[4]s%[5]s%[6]s
 
 USER_INPUT: %s
 
 Output ONLY valid JSON (no extra text):`,
-		guardrailPrefix, persona, summaryText, schema, userInput)
+		guardrailPrefix, persona, summaryText, schema, cal, kw, userInput)
 }
 
 func ConversationPrompt(userInput, summaryText, searchResults string) string {
@@ -212,6 +227,7 @@ type PipelineInfo struct {
 	Name        string
 	Description string
 	Weight      float64
+	Keywords    []string
 	Params      []ParamInfo
 }
 
@@ -228,9 +244,10 @@ func LoadPipelineInfos() []PipelineInfo {
 	data, err := os.ReadFile("config/pipelines.yaml")
 	if err == nil {
 		type rawPipeline struct {
-			Name        string  `yaml:"name"`
-			Description string  `yaml:"description"`
-			Weight      float64 `yaml:"weight"`
+			Name        string   `yaml:"name"`
+			Description string   `yaml:"description"`
+			Weight      float64  `yaml:"weight"`
+			Keywords    []string `yaml:"keywords,omitempty"`
 			Params      []struct {
 				Name        string `yaml:"name"`
 				Required    bool   `yaml:"required"`
@@ -249,6 +266,7 @@ func LoadPipelineInfos() []PipelineInfo {
 					Name:        strings.ToUpper(rp.Name),
 					Description: rp.Description,
 					Weight:      rp.Weight,
+					Keywords:    rp.Keywords,
 				}
 				for _, rp2 := range rp.Params {
 					pi.Params = append(pi.Params, ParamInfo{

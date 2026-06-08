@@ -34,6 +34,18 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case msg.Code == tea.KeyTab:
+		if m.focused == focusInput {
+			val := m.textInput.Value()
+			if strings.HasPrefix(val, "/") {
+				m.computeSlashMatches(val)
+				if len(m.slashMatches) > 0 {
+					m.slashIndex = (m.slashIndex + 1) % len(m.slashMatches)
+					m.textInput.SetValue(m.slashMatches[m.slashIndex])
+					m.textInput.SetCursor(len(m.slashMatches[m.slashIndex]))
+				}
+				return nil
+			}
+		}
 		switch m.focused {
 		case focusLogs:
 			m.focused = focusInput
@@ -56,7 +68,15 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	case msg.Code == tea.KeyEnter:
 		if m.focused == focusInput {
 			input := strings.TrimSpace(m.textInput.Value())
+
+			if len(m.slashMatches) > 0 && strings.HasPrefix(input, "/") && input != m.slashMatches[m.slashIndex] {
+				input = m.slashMatches[m.slashIndex]
+			}
+
 			m.textInput.SetValue("")
+			m.slashMatches = nil
+			m.slashIndex = 0
+
 			if input == "quit" || input == "exit" || input == ":q" || input == "/quit" || input == "/q" {
 				return tea.Quit
 			}
@@ -64,10 +84,23 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 				m.toggleLogPopup()
 				return nil
 			}
+			if input == "/good" || input == "/bad" {
+				positive := input == "/good"
+				if m.lastInput != "" {
+					m.feedback.RecordRating(m.lastInput, positive)
+					msg := fmt.Sprintf("Feedback recorded: %s for \"%s\"", input, m.lastInput)
+					m.logger.Info("FEEDBACK", msg)
+					m.events <- logMsg{message: fmt.Sprintf("[FEEDBACK][INFO] %s", msg)}
+				}
+				return nil
+			}
 			m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
-			if input != "" && m.routerOnline {
-				m.taskMgr.AddOnce(input)
-				m.pendingTasks = m.taskMgr.CountByStatus(task.StatusPending)
+			if input != "" {
+				m.lastSubmitted = input
+				if m.routerOnline {
+					m.taskMgr.AddOnce(input)
+					m.pendingTasks = m.taskMgr.CountByStatus(task.StatusPending)
+				}
 			}
 		}
 		return nil
@@ -78,6 +111,11 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.logView.ScrollUp(3)
 		case focusConv:
 			m.convView.ScrollUp(3)
+		case focusInput:
+			if m.textInput.Value() == "" && m.lastSubmitted != "" {
+				m.textInput.SetValue(m.lastSubmitted)
+				m.textInput.SetCursor(len(m.lastSubmitted))
+			}
 		}
 		return nil
 
@@ -215,6 +253,9 @@ func (m *Model) processTasks() {
 	} else {
 		m.handlePipeline(t, summaryText, intentResult)
 	}
+
+	m.lastInput = t.RawInput
+	m.lastIntent = intentResult
 }
 
 func (m *Model) handleConversation(t *task.Task, summaryText string, intentResult *intent.ParsedIntent) {
@@ -241,6 +282,10 @@ func (m *Model) handleConversation(t *task.Task, summaryText string, intentResul
 	m.logger.Info("DHI", response)
 	m.convMgr.UpdateSummary(t.RawInput, response)
 	m.events <- convMsg{input: t.RawInput, response: response}
+
+	if m.feedback != nil {
+		m.feedback.RecordConversation(t.RawInput)
+	}
 
 	m.taskMgr.Update(t.ID, func(upd *task.Task) {
 		upd.Status = task.StatusCompleted
@@ -288,6 +333,15 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 	m.events <- pipelineStatusMsg{name: pipelineName, status: "IDLE"}
 	m.logger.Info("EXECUTOR", fmt.Sprintf("Pipeline %s completed", intentResult.Event))
 
+	success := raw != "" && !strings.Contains(raw, "failed") && !strings.Contains(raw, "error")
+	errMsg := ""
+	if !success {
+		errMsg = raw
+	}
+	if m.feedback != nil {
+		m.feedback.RecordOutcome(t.RawInput, intentResult.Event, "EXECUTE_"+pipelineName, intentResult.Confidence, success, false, errMsg)
+	}
+
 	m.taskMgr.Update(t.ID, func(upd *task.Task) {
 		upd.Status = task.StatusCompleted
 		upd.Result = reply
@@ -297,4 +351,25 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 			upd.Status = task.StatusWaiting
 		}
 	})
+}
+
+var slashCommands = []string{
+	"/good",
+	"/bad",
+	"/log",
+	"/logs",
+	"/quit",
+}
+
+func (m *Model) computeSlashMatches(prefix string) {
+	m.slashMatches = nil
+	m.slashIndex = 0
+	if !strings.HasPrefix(prefix, "/") || prefix == "/" {
+		return
+	}
+	for _, cmd := range slashCommands {
+		if strings.HasPrefix(cmd, prefix) && cmd != prefix {
+			m.slashMatches = append(m.slashMatches, cmd)
+		}
+	}
 }

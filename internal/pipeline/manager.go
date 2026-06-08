@@ -12,6 +12,7 @@ type Pipeline struct {
 	Name        string              `yaml:"name"`
 	Description string              `yaml:"description"`
 	Weight      float64             `yaml:"weight"`
+	Keywords    []string            `yaml:"keywords,omitempty"`
 	Params      []ParamDefinition   `yaml:"params"`
 	Action      PipelineAction      `yaml:"action"`
 }

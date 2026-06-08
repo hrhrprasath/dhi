@@ -16,6 +16,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+type FeedbackRecorder interface {
+	RecordOutcome(input, predictedEvent, pipelineUsed string, confidence float64, success bool, wasConversation bool, errMsg string)
+	RecordConversation(input string)
+	RecordRating(input string, positive bool)
+}
+
 type focusPanel int
 
 const (
@@ -72,6 +78,7 @@ type Model struct {
 	convMgr   *conversation.Manager
 	sysSvc    *services.SystemService
 	todoMgr   *todo.Manager
+	feedback  FeedbackRecorder
 
 	textInput    textinput.Model
 	logView      viewport.Model
@@ -106,4 +113,11 @@ type Model struct {
 	focusCmd tea.Cmd
 	width    int
 	height   int
+
+	lastInput string
+	lastIntent *intent.ParsedIntent
+	lastSubmitted string
+
+	slashMatches []string
+	slashIndex   int
 }
