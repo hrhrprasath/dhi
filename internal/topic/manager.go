@@ -284,6 +284,25 @@ func (m *Manager) AppendTurn(id, input, response string) error {
 	return nil
 }
 
+func (m *Manager) UpdateTitle(id, title string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for i := range m.list.Topics {
+		if m.list.Topics[i].ID == id {
+			m.list.Topics[i].Title = title
+			m.list.Topics[i].UpdatedAt = time.Now().Format(time.RFC3339)
+			m.saveTopics()
+			td := m.loadTopicData(id)
+			td.Title = title
+			td.UpdatedAt = m.list.Topics[i].UpdatedAt
+			m.writeTopicJSON(td)
+			m.writeTopicMD(td)
+			return
+		}
+	}
+}
+
 func (m *Manager) LoadTopicTurns(id string) []Turn {
 	m.mu.Lock()
 	defer m.mu.Unlock()

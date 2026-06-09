@@ -146,6 +146,40 @@ func (r *Router) Route(userInput, summaryText string) (*ParsedIntent, error) {
 	return parsed, nil
 }
 
+func (r *Router) GenerateTitle(userInput string) (string, error) {
+	titlePrompt := fmt.Sprintf(
+		"Extract 3-4 key words from the query below to form a concise title. "+
+			"Return ONLY the title, nothing else.\n\nQuery: %s\n\nTitle:", userInput)
+
+	req := intentRequest{
+		Model:  r.model,
+		Prompt: titlePrompt,
+		Stream: false,
+	}
+
+	resp, err := r.client.Post(
+		fmt.Sprintf("%s/api/generate", r.endpoint),
+		"application/json",
+		toReader(req),
+	)
+	if err != nil {
+		return "", fmt.Errorf("title generation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("title generation returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var ollamaResp intentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
+		return "", fmt.Errorf("failed to decode title response: %w", err)
+	}
+
+	return strings.TrimSpace(ollamaResp.Response), nil
+}
+
 func (r *Router) Chat(userInput, summaryText, searchResults string) (string, error) {
 	r.logger.Info("ROUTER", fmt.Sprintf("Chat generation for: %s", userInput))
 	p := prompt.ConversationPrompt(userInput, summaryText, searchResults)

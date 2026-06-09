@@ -506,6 +506,17 @@ func (m *Model) processTasks() {
 		return
 	}
 
+	if cur := m.topicMgr.CurrentTopic(); cur != nil && strings.HasPrefix(cur.Title, "Topic ") {
+		if title, err := m.router.GenerateTitle(t.RawInput); err == nil {
+			title = cleanTitle(title)
+			if title != "" {
+				m.topicMgr.UpdateTitle(cur.ID, title)
+				m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] Auto-titled: %s", title)}
+				m.events <- refreshMsg{}
+			}
+		}
+	}
+
 	if intentResult.Confidence < 0.8 || !strings.HasPrefix(intentResult.Event, "EXECUTE_") {
 		m.logger.Info("CONSUMER", fmt.Sprintf("Confidence %.2f < 0.8 — falling back to conversation", intentResult.Confidence))
 		m.handleConversation(t, summaryText, intentResult)
@@ -662,4 +673,14 @@ func (m *Model) computeTopicMatches(prefix string) {
 			m.slashMatches = append(m.slashMatches, label)
 		}
 	}
+}
+
+func cleanTitle(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, `"'.,;:!?`)
+	parts := strings.Fields(s)
+	if len(parts) > 4 {
+		parts = parts[:4]
+	}
+	return strings.Join(parts, " ")
 }
