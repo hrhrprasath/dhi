@@ -139,7 +139,15 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
 			if input != "" {
 				m.lastSubmitted = input
-				if m.routerOnline {
+				if !m.routerOnline {
+					m.conversations = append(m.conversations, conversationEntry{Input: input, Response: "Router offline"})
+					m.refreshConvContent()
+					m.convView.GotoBottom()
+				} else {
+					m.conversations = append(m.conversations, conversationEntry{Input: input, Response: m.thinkingSpinner.View(), thinking: true})
+					m.thinking++
+					m.refreshConvContent()
+					m.convView.GotoBottom()
 					m.taskMgr.AddOnce(input)
 				}
 			}
@@ -310,6 +318,7 @@ func (m *Model) handleNewTopic() {
 
 	t := m.topicMgr.CreateTopic("Topic N")
 	m.conversations = nil
+	m.thinking = 0
 	m.refreshConvContent()
 	m.convView.GotoBottom()
 
@@ -328,6 +337,7 @@ func (m *Model) handleForkTopic() {
 
 	turns := m.topicMgr.LoadTopicTurns(t.ID)
 	m.conversations = nil
+	m.thinking = 0
 	for _, turn := range turns {
 		m.conversations = append(m.conversations, conversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)})
 	}
@@ -350,6 +360,7 @@ func (m *Model) handleResumeTopic() {
 
 	turns := m.topicMgr.LoadTopicTurns(t.ID)
 	m.conversations = nil
+	m.thinking = 0
 	for _, turn := range turns {
 		m.conversations = append(m.conversations, conversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)})
 	}
@@ -372,6 +383,7 @@ func (m *Model) handleSwitchTopic(arg string) {
 		cur := m.topicMgr.CurrentTopic()
 		turns := m.topicMgr.LoadTopicTurns(cur.ID)
 		m.conversations = nil
+		m.thinking = 0
 		for _, turn := range turns {
 			m.conversations = append(m.conversations, conversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)})
 		}

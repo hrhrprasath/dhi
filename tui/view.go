@@ -80,7 +80,7 @@ func (m *Model) renderMetrics() string {
 	)
 
 	return borderStyle.Width(28).Render(
-		lipgloss.NewStyle().Bold(true).Render(" SYSTEM METRICS ") + "\n" + content,
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" SYSTEM METRICS ") + "\n" + content,
 	)
 }
 
@@ -131,13 +131,13 @@ func (m *Model) renderTopicListBlock() string {
 	}
 
 	return style.Width(28).Render(
-		lipgloss.NewStyle().Bold(true).Render(" RECENT TOPICS ") + "\n" + sb.String(),
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" RECENT TOPICS ") + "\n" + sb.String(),
 	)
 }
 
 func (m *Model) renderPipelinesBlock() string {
 	return borderStyle.Width(28).Render(
-		lipgloss.NewStyle().Bold(true).Render(" PIPELINES ") + "\n" + m.pipelineView.View(),
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" PIPELINES ") + "\n" + m.pipelineView.View(),
 	)
 }
 
@@ -159,7 +159,7 @@ func (m *Model) renderDHI() string {
 func (m *Model) renderLogPopup(logW int) string {
 	help := lipgloss.NewStyle().Foreground(dimColor).Render(" ESC to close | scroll: ↑↓ PgUp PgDown ")
 	return focusedBorderStyle.Width(logW).Render(
-		lipgloss.NewStyle().Bold(true).Render(" LOGS ") + "\n" + m.logView.View() + "\n" + help,
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" LOGS ") + "\n" + m.logView.View() + "\n" + help,
 	)
 }
 
@@ -204,7 +204,7 @@ func (m *Model) renderTopicPopup(logW int) string {
 	m.topicView.SetContent(content)
 
 	return focusedBorderStyle.Width(logW).Render(
-		lipgloss.NewStyle().Bold(true).Render(" ALL TOPICS ") + "\n" + m.topicView.View() + "\n" + help,
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" ALL TOPICS ") + "\n" + m.topicView.View() + "\n" + help,
 	)
 }
 
@@ -222,7 +222,7 @@ func (m *Model) renderConvBlock(logW int) string {
 		title = fmt.Sprintf(" TOPIC: %s ", t)
 	}
 	return style.Width(logW).Render(
-		lipgloss.NewStyle().Bold(true).Render(title) + "\n" + m.convView.View(),
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(title) + "\n" + m.convView.View(),
 	)
 }
 

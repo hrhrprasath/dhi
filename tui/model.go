@@ -14,9 +14,11 @@ import (
 	"dhi_harness/internal/topic"
 
 	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
@@ -47,6 +49,11 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 	gp.Empty = '░'
 	gp.Full = '█'
 
+	s := spinner.New(
+		spinner.WithSpinner(spinner.Pulse),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(accentColor)),
+	)
+
 	metrics := sysSvc.GetMetrics()
 
 	statusPipelines := make([]pipelineEntry, 0)
@@ -63,8 +70,9 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 		topicMgr:      topicMgr,
 		sysSvc:        sysSvc,
 		todoMgr:       todoMgr,
-		feedback:      feedback,
-		textInput:     ti,
+		feedback:         feedback,
+		thinkingSpinner:  s,
+		textInput:        ti,
 		logView:       lv,
 		convView:      cv,
 		pipelineView:  pv,
@@ -120,6 +128,7 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.eventPoller(),
 		tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
+		func() tea.Msg { return m.thinkingSpinner.Tick() },
 		m.focusCmd,
 	)
 }
@@ -190,7 +199,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.eventPoller()
 
 	case convMsg:
-		m.conversations = append(m.conversations, conversationEntry{Input: msg.input, Response: stripMarkdown(msg.response)})
+		replaced := false
+		for i := len(m.conversations) - 1; i >= 0; i-- {
+			if m.conversations[i].Input == msg.input && m.conversations[i].thinking {
+				m.conversations[i].Response = stripMarkdown(msg.response)
+				m.conversations[i].thinking = false
+				m.thinking--
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			m.conversations = append(m.conversations, conversationEntry{Input: msg.input, Response: stripMarkdown(msg.response)})
+		}
 		m.refreshConvContent()
 		m.convView.GotoBottom()
 		return m, m.eventPoller()
@@ -206,6 +227,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pipelines = append(m.pipelines, pipelineEntry{Name: msg.name, Status: msg.status})
 		m.refreshPipelineContent()
 		return m, m.eventPoller()
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.thinkingSpinner, cmd = m.thinkingSpinner.Update(msg)
+		if m.thinking > 0 {
+			for i := len(m.conversations) - 1; i >= 0; i-- {
+				if m.conversations[i].thinking {
+					m.conversations[i].Response = m.thinkingSpinner.View()
+					break
+				}
+			}
+			m.refreshConvContent()
+		}
+		return m, tea.Batch(cmd, m.eventPoller())
 
 	case refreshMsg:
 		m.refreshLogContent()

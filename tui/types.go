@@ -10,6 +10,7 @@ import (
 	"dhi_harness/internal/topic"
 
 	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/bubbletea/v2"
@@ -34,6 +35,7 @@ const (
 type conversationEntry struct {
 	Input    string
 	Response string
+	thinking bool
 }
 
 type tickMsg struct{}
@@ -120,4 +122,7 @@ type Model struct {
 
 	slashMatches []string
 	slashIndex   int
+
+	thinking         int
+	thinkingSpinner spinner.Model
 }
