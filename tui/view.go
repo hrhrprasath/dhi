@@ -97,9 +97,12 @@ func (m *Model) renderTopicListBlock() string {
 	for i, t := range all {
 		mark := "  "
 		style := lipgloss.NewStyle().Foreground(dimColor)
-		if cur != nil && t.ID == cur.ID {
-			mark = "→ "
+		if m.focused == focusTopics && i == m.recentSelIdx {
+			mark = "▸ "
 			style = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+		} else if cur != nil && t.ID == cur.ID {
+			mark = "→ "
+			style = lipgloss.NewStyle().Foreground(accentColor)
 		}
 		label := t.Title
 		if len(label) > 20 {
@@ -161,18 +164,21 @@ func (m *Model) renderLogPopup(logW int) string {
 }
 
 func (m *Model) renderTopicPopup(logW int) string {
-	help := lipgloss.NewStyle().Foreground(dimColor).Render(" ESC close · ↑↓ scroll · Enter select · type to search ")
+	help := lipgloss.NewStyle().Foreground(dimColor).Render(" ↑↓ navigate · Enter/Tab select · type to search · ESC close ")
 
 	var list strings.Builder
 	cur := m.topicMgr.CurrentTopic()
 	for i, t := range m.topicFiltered {
 		mark := "  "
 		style := lipgloss.NewStyle().Foreground(dimColor)
-		if cur != nil && t.ID == cur.ID {
-			mark = "→ "
+		if i == m.topicSelIdx {
+			mark = "▸ "
 			style = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+		} else if cur != nil && t.ID == cur.ID {
+			mark = "→ "
+			style = lipgloss.NewStyle().Foreground(accentColor)
 		}
-		list.WriteString(style.Render(fmt.Sprintf("  %s%d. %s", mark, i+1, t.Title)) + "\n")
+		list.WriteString(style.Render(fmt.Sprintf("%s%d. %s", mark, i+1, t.Title)) + "\n")
 	}
 
 	content := list.String()
@@ -181,6 +187,18 @@ func (m *Model) renderTopicPopup(logW int) string {
 	}
 	if len(m.topicFiltered) == 0 {
 		content = "No matching topics."
+	}
+
+	// Scroll topicView to keep selection visible
+	if len(m.topicFiltered) > 0 {
+		visLines := m.topicView.Height()
+		yoff := m.topicView.YOffset()
+		scrollTo := m.topicSelIdx
+		if scrollTo > yoff+visLines-2 {
+			m.topicView.ScrollDown(scrollTo - (yoff + visLines) + 2)
+		} else if scrollTo < yoff {
+			m.topicView.ScrollUp(yoff - scrollTo)
+		}
 	}
 
 	m.topicView.SetContent(content)

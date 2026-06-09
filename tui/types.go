@@ -100,6 +100,8 @@ type Model struct {
 	topicPopupVisible bool
 	topicFilter       string
 	topicFiltered     []topic.Topic
+	topicSelIdx       int
+	recentSelIdx      int
 
 	hostname  string
 	kernel    string

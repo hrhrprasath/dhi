@@ -87,6 +87,7 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 	}
 
 	m.refreshTopicFiltered()
+	m.refreshPipelineContent()
 
 	cur := m.topicMgr.CurrentTopic()
 	if cur != nil {

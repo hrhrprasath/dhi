@@ -40,18 +40,8 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 
 	case msg.Code == tea.KeyTab:
 		if m.topicPopupVisible {
-			switch m.focused {
-			case focusInput:
-				m.focused = focusTopics
-				m.textInput.Blur()
-				return nil
-			case focusTopics:
-				m.focused = focusInput
-				return m.textInput.Focus()
-			default:
-				m.focused = focusInput
-				return m.textInput.Focus()
-			}
+			m.selectCurrentTopic()
+			return nil
 		}
 		if m.focused == focusInput {
 			val := m.textInput.Value()
@@ -80,14 +70,19 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 				m.logView.GotoBottom()
 				return nil
 			}
-			m.focused = focusInput
-			return m.textInput.Focus()
+			m.focused = focusTopics
+			m.textInput.Blur()
+			return nil
 		case focusTopics:
 			m.focused = focusInput
 			return m.textInput.Focus()
 		}
 
 	case msg.Code == tea.KeyEnter:
+		if m.focused == focusTopics {
+			m.selectRecentTopic()
+			return nil
+		}
 		if m.focused == focusInput {
 			input := strings.TrimSpace(m.textInput.Value())
 
@@ -96,15 +91,7 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			}
 
 			if m.topicPopupVisible {
-				m.textInput.SetValue("")
-				// Clear filter text so input is the selection number
-				m.topicFilter = ""
-				m.refreshTopicFiltered()
-				// If input is a number, switch by position in full topic list
-				if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(m.topicFiltered) {
-					m.toggleTopicPopup()
-					m.handleSwitchTopic(m.topicFiltered[n-1].ID)
-				}
+				m.selectCurrentTopic()
 				return nil
 			}
 
@@ -160,13 +147,21 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case msg.Code == tea.KeyUp:
+		if m.topicPopupVisible {
+			if m.topicSelIdx > 0 {
+				m.topicSelIdx--
+			}
+			return nil
+		}
 		switch m.focused {
 		case focusLogs:
 			m.logView.ScrollUp(3)
 		case focusConv:
 			m.convView.ScrollUp(3)
 		case focusTopics:
-			m.topicView.ScrollUp(3)
+			if m.recentSelIdx > 0 {
+				m.recentSelIdx--
+			}
 		case focusInput:
 			if m.textInput.Value() == "" && m.lastSubmitted != "" {
 				m.textInput.SetValue(m.lastSubmitted)
@@ -176,13 +171,26 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case msg.Code == tea.KeyDown:
+		if m.topicPopupVisible {
+			if m.topicSelIdx < len(m.topicFiltered)-1 {
+				m.topicSelIdx++
+			}
+			return nil
+		}
 		switch m.focused {
 		case focusLogs:
 			m.logView.ScrollDown(3)
 		case focusConv:
 			m.convView.ScrollDown(3)
 		case focusTopics:
-			m.topicView.ScrollDown(3)
+			recent := m.topicMgr.ListTopics()
+			limit := 5
+			if len(recent) > limit {
+				recent = recent[:limit]
+			}
+			if m.recentSelIdx < len(recent)-1 {
+				m.recentSelIdx++
+			}
 		}
 		return nil
 
@@ -215,8 +223,12 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 
 		// If topic popup is visible, update filter on each keystroke
 		if m.topicPopupVisible {
+			oldFilter := m.topicFilter
 			m.topicFilter = m.textInput.Value()
-			m.refreshTopicFiltered()
+			if m.topicFilter != oldFilter {
+				m.refreshTopicFiltered()
+				m.topicSelIdx = 0
+			}
 		}
 
 		return cmd
@@ -273,13 +285,15 @@ func (m *Model) toggleTopicPopup() {
 	m.topicPopupVisible = !m.topicPopupVisible
 	if m.topicPopupVisible {
 		m.topicFilter = ""
+		m.topicSelIdx = 0
 		m.textInput.SetValue("")
-		m.textInput.Placeholder = " Search topics (type to filter, Enter number to select)"
+		m.textInput.Placeholder = " Search topics (↑↓ navigate, Enter/Tab select)"
 		m.refreshTopicFiltered()
 		m.focused = focusInput
 		m.textInput.Focus()
 		m.topicView.GotoBottom()
 	} else {
+		m.topicFilter = ""
 		m.textInput.Placeholder = " Type a command... (/topic → topics /log → logs)"
 		m.focused = focusInput
 		m.textInput.Focus()
@@ -372,6 +386,29 @@ func (m *Model) handleSwitchTopic(arg string) {
 		m.logger.Info("TOPIC", msg)
 		m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
 	}
+}
+
+func (m *Model) selectRecentTopic() {
+	all := m.topicMgr.ListTopics()
+	limit := 5
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	if m.recentSelIdx >= 0 && m.recentSelIdx < len(all) {
+		m.handleSwitchTopic(all[m.recentSelIdx].ID)
+	}
+}
+
+func (m *Model) selectCurrentTopic() {
+	if len(m.topicFiltered) == 0 {
+		return
+	}
+	idx := m.topicSelIdx
+	if idx < 0 || idx >= len(m.topicFiltered) {
+		return
+	}
+	m.toggleTopicPopup()
+	m.handleSwitchTopic(m.topicFiltered[idx].ID)
 }
 
 func (m *Model) toggleLogPopup() {
