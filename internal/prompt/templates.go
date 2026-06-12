@@ -128,7 +128,7 @@ func exampleValue(name string) string {
 	}
 }
 
-func ClassifyPrompt(userInput, summaryText string, calibrationBlock string, keywordBlock string, weightLines map[string]string) string {
+func ClassifyPrompt(userInput, summaryText, topicTitle string, calibrationBlock string, keywordBlock string, weightLines map[string]string) string {
 	schema := BuildSchema(weightLines)
 	cal := ""
 	if calibrationBlock != "" {
@@ -171,13 +171,14 @@ CONVERSATION HISTORY:
 
 %[4]s%[5]s%[6]s
 
-USER_INPUT: %s
+TOPIC: %[7]s
+USER_INPUT: %[8]s
 
 Output ONLY valid JSON (no extra text):`,
-		guardrailPrefix, persona, summaryText, schema, cal, kw, userInput)
+		guardrailPrefix, persona, summaryText, schema, cal, kw, topicTitle, userInput)
 }
 
-func ConversationPrompt(userInput, summaryText, searchResults string) string {
+func ConversationPrompt(userInput, summaryText, searchResults, topicTitle string) string {
 	context := ""
 	if searchResults != "" {
 		context = "\n\n" + searchResults
@@ -189,12 +190,13 @@ func ConversationPrompt(userInput, summaryText, searchResults string) string {
 CONVERSATION HISTORY:
 %s%s
 
+TOPIC: %[5]s
 ---BEGIN INPUT---
-%s
+%[6]s
 ---END INPUT---
 
 Now respond as DHI Harness. Write ONLY your reply — no labels, no prefixes, no echoing the input. No greetings in follow-ups — get straight to the point. Never fabricate facts, model names, versions, or release dates. If you don't know, say so.`,
-		guardrailPrefix, persona, summaryText, context, userInput)
+		guardrailPrefix, persona, summaryText, context, topicTitle, userInput)
 }
 
 func SynthesisPrompt(rawData, pipeline, userInput, conversationContext string) string {

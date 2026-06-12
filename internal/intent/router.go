@@ -23,7 +23,7 @@ type ParsedIntent struct {
 }
 
 type WeightProvider interface {
-	BuildWeightLine(pipelineName string, baseWeight float64) string
+	BuildWeightLine(pipelineName, userInput string, baseWeight float64) string
 	BuildCalibrationBlock() string
 	BuildKeywordBlock(userInput string, pipelineKeywords map[string][]string) string
 	CalibrateWithEvent(rawConfidence float64, event string) float64
@@ -64,14 +64,14 @@ func (r *Router) SetWeightProvider(wp WeightProvider) {
 	r.weights = wp
 }
 
-func (r *Router) buildWeightLines() map[string]string {
+func (r *Router) buildWeightLines(userInput string) map[string]string {
 	if r.weights == nil {
 		return nil
 	}
 	pipelines := prompt.LoadPipelineInfos()
 	lines := make(map[string]string, len(pipelines))
 	for _, p := range pipelines {
-		wl := r.weights.BuildWeightLine(p.Name, p.Weight)
+		wl := r.weights.BuildWeightLine(p.Name, userInput, p.Weight)
 		if wl != "" {
 			lines[strings.ToLower(p.Name)] = wl
 		}
@@ -79,12 +79,12 @@ func (r *Router) buildWeightLines() map[string]string {
 	return lines
 }
 
-func (r *Router) Route(userInput, summaryText string) (*ParsedIntent, error) {
+func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent, error) {
 	r.logger.Info("ROUTER", fmt.Sprintf("User input: %s", userInput))
 
 	calBlock := ""
 	keywordBlock := ""
-	weightLines := r.buildWeightLines()
+	weightLines := r.buildWeightLines(userInput)
 	if r.weights != nil {
 		calBlock = r.weights.BuildCalibrationBlock()
 		pipelines := prompt.LoadPipelineInfos()
@@ -97,7 +97,7 @@ func (r *Router) Route(userInput, summaryText string) (*ParsedIntent, error) {
 		keywordBlock = r.weights.BuildKeywordBlock(userInput, pipelineKeywords)
 	}
 
-	p := prompt.ClassifyPrompt(userInput, summaryText, calBlock, keywordBlock, weightLines)
+	p := prompt.ClassifyPrompt(userInput, summaryText, topicTitle, calBlock, keywordBlock, weightLines)
 	r.savePrompt(p)
 
 	req := intentRequest{
@@ -180,9 +180,9 @@ func (r *Router) GenerateTitle(userInput string) (string, error) {
 	return strings.TrimSpace(ollamaResp.Response), nil
 }
 
-func (r *Router) Chat(userInput, summaryText, searchResults string) (string, error) {
+func (r *Router) Chat(userInput, summaryText, searchResults, topicTitle string) (string, error) {
 	r.logger.Info("ROUTER", fmt.Sprintf("Chat generation for: %s", userInput))
-	p := prompt.ConversationPrompt(userInput, summaryText, searchResults)
+	p := prompt.ConversationPrompt(userInput, summaryText, searchResults, topicTitle)
 
 	req := intentRequest{
 		Model:  r.model,

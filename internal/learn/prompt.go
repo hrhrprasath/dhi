@@ -2,18 +2,21 @@ package learn
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 )
 
-func (e *Engine) BuildWeightLine(pipelineName string, baseWeight float64) string {
+func (e *Engine) BuildWeightLine(pipelineName, userInput string, baseWeight float64) string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	name := strings.ToLower(pipelineName)
 	adjusted := e.computeWeightLocked(name)
+	kwScore := e.keywordScoreLocked(userInput, name)
+	effective := math.Max(adjusted, kwScore)
 
-	if adjusted == 0 {
+	if adjusted == 0 && kwScore == 0 {
 		return fmt.Sprintf("weight: %.1f", baseWeight)
 	}
 
@@ -21,12 +24,33 @@ func (e *Engine) BuildWeightLine(pipelineName string, baseWeight float64) string
 
 	accuracy, calls := e.accuracyLocked(name)
 	if calls < 3 {
-		return fmt.Sprintf("weight: %.1f | learned: %.2f | trend: %s",
-			baseWeight, adjusted, trend)
+		return fmt.Sprintf("weight: %.1f | learned: %.2f | keyword: %.2f | effective: %.2f | trend: %s",
+			baseWeight, adjusted, kwScore, effective, trend)
 	}
 
-	return fmt.Sprintf("weight: %.1f | learned: %.2f | accuracy: %.0f%% (%d) | trend: %s",
-		baseWeight, adjusted, accuracy*100, calls, trend)
+	return fmt.Sprintf("weight: %.1f | learned: %.2f | keyword: %.2f | effective: %.2f | accuracy: %.0f%% (%d) | trend: %s",
+		baseWeight, adjusted, kwScore, effective, accuracy*100, calls, trend)
+}
+
+func (e *Engine) keywordScoreLocked(input, pipeline string) float64 {
+	words := extractWords(input)
+	if len(words) == 0 {
+		return 0
+	}
+	var best float64
+	for _, w := range words {
+		pips := e.data.KeywordPipelines[w]
+		if pips == nil {
+			continue
+		}
+		if ks, ok := pips[pipeline]; ok && ks.Count > 0 {
+			score := float64(ks.Success) / float64(ks.Count)
+			if score > best {
+				best = score
+			}
+		}
+	}
+	return best
 }
 
 func (e *Engine) BuildCalibrationBlock() string {

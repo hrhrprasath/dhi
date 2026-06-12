@@ -87,7 +87,7 @@ func (e *Engine) BuildKeywordBlock(input string, pipelineKeywords map[string][]s
 			continue
 		}
 		for _, s := range pips {
-			if s.Count >= 2 {
+			if s.Count >= 1 {
 				pct := float64(s.Success) / float64(s.Count) * 100
 				learned = append(learned, assoc{
 					word:     w,

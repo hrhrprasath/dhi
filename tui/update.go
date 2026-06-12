@@ -496,7 +496,11 @@ func (m *Model) processTasks() {
 
 	m.logger.Info("CONSUMER", fmt.Sprintf("Classifying: %s", t.RawInput))
 
-	intentResult, err := m.router.Route(t.RawInput, summaryText)
+	topicTitle := ""
+	if cur := m.topicMgr.CurrentTopic(); cur != nil {
+		topicTitle = cur.Title
+	}
+	intentResult, err := m.router.Route(t.RawInput, summaryText, topicTitle)
 	if err != nil {
 		m.logger.Error("CONSUMER", fmt.Sprintf("Classify failed: %s", err))
 		m.taskMgr.Update(t.ID, func(upd *task.Task) {
@@ -538,7 +542,11 @@ func (m *Model) handleConversation(t *task.Task, summaryText string, intentResul
 		searchResults = sr
 	}
 
-	response, err := m.router.Chat(t.RawInput, summaryText, searchResults)
+	topicTitle := ""
+	if cur := m.topicMgr.CurrentTopic(); cur != nil {
+		topicTitle = cur.Title
+	}
+	response, err := m.router.Chat(t.RawInput, summaryText, searchResults, topicTitle)
 	if err != nil {
 		m.logger.Error("CONSUMER", fmt.Sprintf("Chat failed: %s", err))
 		m.taskMgr.Update(t.ID, func(upd *task.Task) {
