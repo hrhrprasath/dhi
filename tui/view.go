@@ -19,12 +19,9 @@ func (m *Model) render() string {
 	rw := m.rightWidth()
 
 	leftPanel := lipgloss.JoinVertical(lipgloss.Top,
-		m.renderMetrics(),
-		"",
-		m.renderPipelinesBlock(),
-		"",
 		m.renderDHI(),
-		"",
+		m.renderMetrics(),
+		m.renderPipelinesBlock(),
 		m.renderTopicListBlock(),
 	)
 
@@ -119,7 +116,7 @@ func (m *Model) renderTopicListBlock() string {
 
 	// Fill remaining height
 	contentLines := strings.Count(sb.String(), "\n") + 1
-	used := 9 + 1 + 9 + 1 + 7 + 1 // metrics + spacer + pipelines + spacer + dhi + spacer
+	used := 7 + 9 + 9 // dhi + metrics + pipelines (no spacers)
 	available := m.height - used - 2
 	if fill := available - contentLines; fill > 0 {
 		sb.WriteString(strings.Repeat("\n", fill))
