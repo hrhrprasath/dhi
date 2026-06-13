@@ -1,0 +1,10 @@
+#!/bin/bash
+url="$*"
+if ! echo "$url" | grep -qiE '^https?://'; then
+    url="https://$url"
+fi
+if ! echo "$url" | grep -qiE '^https?://[a-zA-Z0-9._~:/?#@!$&'"'"'()*+,;=-]+$'; then
+    echo "Rejected: invalid or unsafe URL" >&2
+    exit 1
+fi
+open "$url"

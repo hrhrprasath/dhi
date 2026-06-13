@@ -58,4 +58,15 @@ pipelines:
       type: bash
       script: "scripts/spotify {query}"
 
+  - name: open_browser
+    description: Open any URL or website in the default browser (open, open browser, visit, go to, launch, show me, take me to)
+    weight: 0.4
+    params:
+      - name: url
+        required: true
+        extract_hint: "Extract the full URL or website name from the user input (e.g., 'https://github.com', 'youtube.com', 'reddit')"
+    action:
+      type: bash
+      script: "scripts/open_browser {url}"
+
 

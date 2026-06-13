@@ -121,8 +121,6 @@ func (e *Executor) executeAction(pl *Pipeline, params map[string]string) string 
 		return e.executeExec(pl.Action, params)
 	case "bash":
 		return e.executeBash(pl.Action, params)
-	case "open":
-		return e.executeOpen(pl.Action, params)
 	case "internal":
 		return e.handlers.Execute(pl.Action.Handler, params)
 	default:
@@ -169,15 +167,6 @@ func (e *Executor) executeBash(action PipelineAction, params map[string]string) 
 		return fmt.Sprintf("Script failed: %s", err)
 	}
 	return out
-}
-
-func (e *Executor) executeOpen(action PipelineAction, params map[string]string) string {
-	target := e.interpolate(action.Target, params)
-	_, err := runCmd("open", target)
-	if err != nil {
-		return fmt.Sprintf("Failed to open: %s", err)
-	}
-	return fmt.Sprintf("Opened: %s", target)
 }
 
 func (e *Executor) interpolate(template string, params map[string]string) string {
