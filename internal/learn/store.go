@@ -59,6 +59,15 @@ type Engine struct {
 	path string
 }
 
+func defaultLearningData() LearningData {
+	return LearningData{
+		Version:          1,
+		PipelineStats:    make(map[string]*PipelineStats),
+		Calibration:      make(map[string][]ConfidenceBucket),
+		KeywordPipelines: make(map[string]map[string]*KeywordStat),
+	}
+}
+
 func NewEngine(dataDir string) *Engine {
 	dir := filepath.Join(dataDir, "learn")
 	os.MkdirAll(dir, 0755)
@@ -67,9 +76,7 @@ func NewEngine(dataDir string) *Engine {
 	e := &Engine{path: p}
 	e.data = e.load()
 	if e.data.Version == 0 {
-		e.data.Version = 1
-		e.data.PipelineStats = make(map[string]*PipelineStats)
-		e.data.Calibration = make(map[string][]ConfidenceBucket)
+		e.data = defaultLearningData()
 	}
 	if e.data.KeywordPipelines == nil {
 		e.data.KeywordPipelines = make(map[string]map[string]*KeywordStat)
@@ -80,21 +87,11 @@ func NewEngine(dataDir string) *Engine {
 func (e *Engine) load() LearningData {
 	data, err := os.ReadFile(e.path)
 	if err != nil {
-		return LearningData{
-			Version:          1,
-			PipelineStats:    make(map[string]*PipelineStats),
-			Calibration:      make(map[string][]ConfidenceBucket),
-			KeywordPipelines: make(map[string]map[string]*KeywordStat),
-		}
+		return defaultLearningData()
 	}
 	var ld LearningData
 	if json.Unmarshal(data, &ld) != nil {
-		return LearningData{
-			Version:          1,
-			PipelineStats:    make(map[string]*PipelineStats),
-			Calibration:      make(map[string][]ConfidenceBucket),
-			KeywordPipelines: make(map[string]map[string]*KeywordStat),
-		}
+		return defaultLearningData()
 	}
 	if ld.PipelineStats == nil {
 		ld.PipelineStats = make(map[string]*PipelineStats)

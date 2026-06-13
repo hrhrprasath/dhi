@@ -128,7 +128,7 @@ func (e *Engine) updateCalibrationLocked(pipeline string, confidence float64, su
 	name := strings.ToLower(pipeline)
 	buckets := e.data.Calibration[name]
 	if buckets == nil {
-		buckets = defaultBuckets()
+		buckets = defaultBuckets
 	}
 
 	idx := bucketIndex(confidence, buckets)
@@ -219,16 +219,6 @@ func (e *Engine) GetTrend(pipeline string) string {
 	defer e.mu.Unlock()
 
 	return e.computeTrendLocked(pipeline)
-}
-
-func defaultBuckets() []ConfidenceBucket {
-	return []ConfidenceBucket{
-		{Low: 0.5, High: 0.6},
-		{Low: 0.6, High: 0.7},
-		{Low: 0.7, High: 0.8},
-		{Low: 0.8, High: 0.9},
-		{Low: 0.9, High: 1.0},
-	}
 }
 
 func bucketIndex(confidence float64, buckets []ConfidenceBucket) int {

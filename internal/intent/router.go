@@ -110,7 +110,7 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 	resp, err := r.client.Post(
 		fmt.Sprintf("%s/api/generate", r.endpoint),
 		"application/json",
-		toReader(req),
+		newReader(req),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("ollama request failed: %w", err)
@@ -160,7 +160,7 @@ func (r *Router) GenerateTitle(userInput string) (string, error) {
 	resp, err := r.client.Post(
 		fmt.Sprintf("%s/api/generate", r.endpoint),
 		"application/json",
-		toReader(req),
+		newReader(req),
 	)
 	if err != nil {
 		return "", fmt.Errorf("title generation request failed: %w", err)
@@ -193,7 +193,7 @@ func (r *Router) Chat(userInput, summaryText, searchResults, topicTitle string) 
 	resp, err := r.client.Post(
 		fmt.Sprintf("%s/api/generate", r.endpoint),
 		"application/json",
-		toReader(req),
+		newReader(req),
 	)
 	if err != nil {
 		return "", fmt.Errorf("ollama chat request failed: %w", err)
@@ -250,7 +250,7 @@ func parseJSON(raw string) (*ParsedIntent, error) {
 	return &parsed, nil
 }
 
-func toReader(v any) io.Reader {
+func newReader(v any) io.Reader {
 	data, _ := json.Marshal(v)
 	return bytes.NewReader(data)
 }

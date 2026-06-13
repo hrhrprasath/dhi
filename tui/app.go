@@ -13,7 +13,6 @@ import (
 	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
 	"dhi_harness/internal/topic"
-	"dhi_harness/tui/components"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
@@ -39,7 +38,6 @@ const (
 )
 
 type Model struct {
-	// Dependencies
 	cfg      *config.Config
 	logger   *services.Logger
 	taskMgr  *task.Manager
@@ -50,24 +48,21 @@ type Model struct {
 	todoMgr  *todo.Manager
 	feedback FeedbackRecorder
 
-	// Layout
 	width    int
 	height   int
-	events   chan interface{}
+	events   chan any
 	focused  focusPanel
 	focusCmd tea.Cmd
 
-	// Last intent tracking
 	lastInput  string
 	lastIntent *intent.ParsedIntent
 
-	// Components
-	DHIOS   components.DHIOS
-	System  components.System
-	Pipeline components.Pipeline
-	CC      components.CommandCenter
-	Topic   components.Topic
-	Log     components.Log
+	dhiOS    dhiOS
+	system   systemPanel
+	pipeline pipelinePanel
+	cc       commandCenter
+	topic    topicPanel
+	log      logPanel
 }
 
 func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
@@ -118,14 +113,14 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 			},
 			FPS: time.Second / 13,
 		}),
-		spinner.WithStyle(lipgloss.NewStyle().Foreground(components.AccentColor)),
+		spinner.WithStyle(lipgloss.NewStyle().Foreground(accentColor)),
 	)
 
 	metrics := sysSvc.GetMetrics()
 
-	statusPipelines := make([]components.PipelineEntry, 0)
+	statusPipelines := make([]pipelineEntry, 0)
 	for _, p := range pipeExec.ListPipelines() {
-		statusPipelines = append(statusPipelines, components.PipelineEntry{Name: p, Status: "IDLE"})
+		statusPipelines = append(statusPipelines, pipelineEntry{name: p, status: "IDLE"})
 	}
 
 	m := &Model{
@@ -141,52 +136,52 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 
 		focused:  focusInput,
 		focusCmd: focusCmd,
-		events:   make(chan interface{}, 200),
+		events:   make(chan any, 200),
 		width:    80,
 		height:   30,
 
-		DHIOS: components.DHIOS{
-			Hostname:  metrics.Hostname,
-			Kernel:    metrics.Kernel,
-			UptimeSec: metrics.UptimeSec,
+		dhiOS: dhiOS{
+			hostname:  metrics.Hostname,
+			kernel:    metrics.Kernel,
+			uptimeSec: metrics.UptimeSec,
 		},
-		System: components.System{
-			Metrics:      metrics,
-			RouterStatus: "OFFLINE",
-			CPUProgress:  cp,
-			RAMProgress:  rp,
-			GPUProgress:  gp,
+		system: systemPanel{
+			metrics:      metrics,
+			routerStatus: "OFFLINE",
+			cpuProgress:  cp,
+			ramProgress:  rp,
+			gpuProgress:  gp,
 		},
-		Pipeline: components.Pipeline{
-			Entries: statusPipelines,
-			View:    pv,
+		pipeline: pipelinePanel{
+			entries: statusPipelines,
+			view:    pv,
 		},
-		CC: components.CommandCenter{
-			Spinner:   s,
-			TextInput: ti,
-			ConvView:  cv,
+		cc: commandCenter{
+			spinner:   s,
+			textInput: ti,
+			convView:  cv,
 		},
-		Topic: components.Topic{
-			View: tv,
+		topic: topicPanel{
+			view: tv,
 		},
-		Log: components.Log{
-			View: lv,
-			Entries: []string{"[SYSTEM][INFO] DHI Harness initializing..."},
+		log: logPanel{
+			view:    lv,
+			entries: []string{"[SYSTEM][INFO] DHI Harness initializing..."},
 		},
 	}
 
-	m.Topic.FilterTopics(m.topicMgr.ListTopics())
-	m.Pipeline.Render()
+	m.topic.filterTopics(m.topicMgr.ListTopics())
+	m.pipeline.render()
 
 	cur := m.topicMgr.CurrentTopic()
 	if cur != nil {
 		turns := m.topicMgr.LoadTopicTurns(cur.ID)
-		convTurns := make([]components.ConversationEntry, len(turns))
+		convTurns := make([]conversationEntry, len(turns))
 		for i, t := range turns {
-			convTurns[i] = components.ConversationEntry{Input: t.Input, Response: stripMarkdown(t.Response)}
+			convTurns[i] = conversationEntry{input: t.Input, response: stripMarkdown(t.Response)}
 		}
-		m.CC.SetConversationsFromTurns(convTurns)
-		m.CC.ConvView.GotoBottom()
+		m.cc.setConversationsFromTurns(convTurns)
+		m.cc.convView.GotoBottom()
 	}
 
 	return m
@@ -210,7 +205,7 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.eventPoller(),
 		tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
-		func() tea.Msg { return m.CC.Spinner.Tick() },
+		func() tea.Msg { return m.cc.spinner.Tick() },
 		m.focusCmd,
 	)
 }
@@ -242,64 +237,64 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		rw := m.rightWidth()
 		vw := rw - 2
-		ch := components.Max(msg.Height-7, 3)
-		lh := components.Max(ch-1, 6)
-		m.Log.View.SetWidth(vw)
-		m.Log.View.SetHeight(lh)
-		m.CC.ConvView.SetWidth(vw)
-		m.CC.ConvView.SetHeight(ch)
-		m.Topic.View.SetWidth(vw - 2)
-		m.Topic.View.SetHeight(ch)
-		m.CC.TextInput.SetWidth(rw - 16)
+		ch := max(msg.Height-7, 3)
+		lh := max(ch-1, 6)
+		m.log.view.SetWidth(vw)
+		m.log.view.SetHeight(lh)
+		m.cc.convView.SetWidth(vw)
+		m.cc.convView.SetHeight(ch)
+		m.topic.view.SetWidth(vw - 2)
+		m.topic.view.SetHeight(ch)
+		m.cc.textInput.SetWidth(rw - 16)
 		return m, m.eventPoller()
 
 	case tickMsg:
-		m.DHIOS.UptimeSec++
-		m.System.Metrics = m.sysSvc.GetMetrics()
+		m.dhiOS.uptimeSec++
+		m.system.metrics = m.sysSvc.GetMetrics()
 		return m, tea.Batch(
 			m.eventPoller(),
 			tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{} }),
 		)
 
 	case routerStatusMsg:
-		m.System.RouterOnline = msg.online
+		m.system.routerOnline = msg.online
 		if msg.online {
-			m.System.RouterStatus = "READY"
+			m.system.routerStatus = "READY"
 		} else {
-			m.System.RouterStatus = "OFFLINE"
+			m.system.routerStatus = "OFFLINE"
 		}
 		return m, m.eventPoller()
 
 	case logMsg:
-		m.Log.Append(msg.message)
-		m.Log.View.GotoBottom()
+		m.log.append(msg.message)
+		m.log.view.GotoBottom()
 		return m, m.eventPoller()
 
 	case convMsg:
-		if !m.CC.SetResponse(msg.input, stripMarkdown(msg.response)) {
-			m.CC.Conversations = append(m.CC.Conversations, components.ConversationEntry{
-				Input:    msg.input,
-				Response: stripMarkdown(msg.response),
+		if !m.cc.setResponse(msg.input, stripMarkdown(msg.response)) {
+			m.cc.conversations = append(m.cc.conversations, conversationEntry{
+				input:    msg.input,
+				response: stripMarkdown(msg.response),
 			})
 		}
-		m.CC.ConvView.GotoBottom()
+		m.cc.convView.GotoBottom()
 		return m, m.eventPoller()
 
 	case pipelineStatusMsg:
-		for i, p := range m.Pipeline.Entries {
-			if p.Name == msg.name {
-				m.Pipeline.Entries[i].Status = msg.status
+		for i, p := range m.pipeline.entries {
+			if p.name == msg.name {
+				m.pipeline.entries[i].status = msg.status
 				return m, m.eventPoller()
 			}
 		}
-		m.Pipeline.Entries = append(m.Pipeline.Entries, components.PipelineEntry{Name: msg.name, Status: msg.status})
+		m.pipeline.entries = append(m.pipeline.entries, pipelineEntry{name: msg.name, status: msg.status})
 		return m, m.eventPoller()
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
-		m.CC.Spinner, cmd = m.CC.Spinner.Update(msg)
-		if m.CC.UpdateSpinnerResponse() {
-			m.CC.ConvView.GotoBottom()
+		m.cc.spinner, cmd = m.cc.spinner.Update(msg)
+		if m.cc.updateSpinnerResponse() {
+			m.cc.convView.GotoBottom()
 		}
 		return m, tea.Batch(cmd, m.eventPoller())
 
@@ -324,29 +319,29 @@ func (m *Model) render() string {
 	rw := m.rightWidth()
 
 	leftPanel := lipgloss.JoinVertical(lipgloss.Top,
-		m.DHIOS.Render(),
-		m.System.Render(),
-		m.Pipeline.Render(),
-		m.Topic.RenderRecent(m.topicMgr.ListTopics(), m.topicMgr.CurrentTopic(), m.focused == focusTopics, m.height),
+		m.dhiOS.render(),
+		m.system.render(),
+		m.pipeline.render(),
+		m.topic.renderRecent(m.topicMgr.ListTopics(), m.topicMgr.CurrentTopic(), m.focused == focusTopics, m.height),
 	)
 
 	var mainBlock string
 	switch {
-	case m.Log.PopupOpen:
-		mainBlock = m.Log.RenderPopup(rw)
-	case m.Topic.PopupOpen:
-		mainBlock = m.Topic.RenderPopup(rw, m.topicMgr.CurrentTopic())
+	case m.log.popupOpen:
+		mainBlock = m.log.renderPopup(rw)
+	case m.topic.popupOpen:
+		mainBlock = m.topic.renderPopup(rw, m.topicMgr.CurrentTopic())
 	default:
 		topicTitle := ""
 		if cur := m.topicMgr.CurrentTopic(); cur != nil {
 			topicTitle = cur.Title
 		}
-		mainBlock = m.CC.RenderConv(rw, m.focused == focusConv, topicTitle)
+		mainBlock = m.cc.renderConv(rw, m.focused == focusConv, topicTitle)
 	}
 
 	rightPanel := lipgloss.JoinVertical(lipgloss.Top,
 		mainBlock,
-		m.CC.RenderInput(rw, m.System.RouterOnline, m.focused == focusInput),
+		m.cc.renderInput(rw, m.system.routerOnline, m.focused == focusInput),
 	)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
@@ -357,7 +352,7 @@ func (m *Model) render() string {
 }
 
 func (m *Model) rightWidth() int {
-	return components.Max(m.width-30, 40)
+	return max(m.width-30, 40)
 }
 
 // ─── Keyboard Handling ───
@@ -365,222 +360,252 @@ func (m *Model) rightWidth() int {
 func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	switch {
 	case msg.Code == 'c' && msg.Mod == tea.ModCtrl:
-		fallthrough
+		return tea.Quit
 	case msg.Code == 'd' && msg.Mod == tea.ModCtrl:
 		return tea.Quit
 
 	case msg.Code == tea.KeyEscape:
-		if m.Topic.PopupOpen {
-			m.toggleTopicPopup()
-			return nil
-		}
-		if m.Log.PopupOpen {
-			m.Log.PopupOpen = false
-			if m.focused == focusLogs {
-				m.focused = focusInput
-				return m.CC.TextInput.Focus()
-			}
-		}
-		return nil
+		return m.handleEscape()
 
 	case msg.Code == tea.KeyTab:
-		if m.Topic.PopupOpen {
-			m.selectCurrentTopic()
-			return nil
-		}
-		if m.focused == focusInput {
-			val := m.CC.TextInput.Value()
-			if strings.HasPrefix(val, "/") {
-				m.computeSlashMatches(val)
-				if len(m.CC.SlashMatches) > 0 {
-					m.CC.SlashIndex = (m.CC.SlashIndex + 1) % len(m.CC.SlashMatches)
-					m.CC.TextInput.SetValue(m.CC.SlashMatches[m.CC.SlashIndex])
-					m.CC.TextInput.SetCursor(len(m.CC.SlashMatches[m.CC.SlashIndex]))
-				}
-				return nil
-			}
-		}
-		switch m.focused {
-		case focusLogs:
-			m.focused = focusInput
-			return m.CC.TextInput.Focus()
-		case focusInput:
-			m.focused = focusConv
-			m.CC.TextInput.Blur()
-			return nil
-		case focusConv:
-			if m.Log.PopupOpen {
-				m.focused = focusLogs
-				m.CC.TextInput.Blur()
-				m.Log.View.GotoBottom()
-				return nil
-			}
-			m.focused = focusTopics
-			m.CC.TextInput.Blur()
-			return nil
-		case focusTopics:
-			m.focused = focusInput
-			return m.CC.TextInput.Focus()
-		}
+		return m.handleTab()
 
 	case msg.Code == tea.KeyEnter:
-		if m.focused == focusTopics {
-			m.selectRecentTopic()
-			return nil
-		}
-		if m.focused == focusInput {
-			input := strings.TrimSpace(m.CC.TextInput.Value())
-
-			if len(m.CC.SlashMatches) > 0 && strings.HasPrefix(input, "/") && input != m.CC.SlashMatches[m.CC.SlashIndex] {
-				input = m.CC.SlashMatches[m.CC.SlashIndex]
-			}
-
-			if m.Topic.PopupOpen {
-				m.selectCurrentTopic()
-				return nil
-			}
-
-			m.CC.TextInput.SetValue("")
-			m.CC.SlashMatches = nil
-			m.CC.SlashIndex = 0
-
-			if input == "quit" || input == "exit" || input == ":q" || input == "/quit" || input == "/q" {
-				return tea.Quit
-			}
-			if input == "/log" || input == "/logs" || input == "/l" {
-				m.toggleLogPopup()
-				return nil
-			}
-			if input == "/good" || input == "/bad" {
-				positive := input == "/good"
-				if m.lastInput != "" {
-					m.feedback.RecordRating(m.lastInput, positive)
-					msg := fmt.Sprintf("Feedback recorded: %s for \"%s\"", input, m.lastInput)
-					m.logger.Info("FEEDBACK", msg)
-					m.events <- logMsg{message: fmt.Sprintf("[FEEDBACK][INFO] %s", msg)}
-				}
-				return nil
-			}
-			if input == "/new" {
-				m.handleNewTopic()
-				return nil
-			}
-			if input == "/fork" {
-				m.handleForkTopic()
-				return nil
-			}
-			if input == "/resume" {
-				m.handleResumeTopic()
-				return nil
-			}
-			if input == "/topic" || input == "/topics" {
-				m.toggleTopicPopup()
-				return nil
-			}
-			if strings.HasPrefix(input, "/topic ") {
-				m.handleSwitchTopic(strings.TrimSpace(strings.TrimPrefix(input, "/topic ")))
-				return nil
-			}
-			m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
-			if input != "" {
-				m.CC.LastSubmitted = input
-				if !m.System.RouterOnline {
-					m.CC.Conversations = append(m.CC.Conversations, components.ConversationEntry{Input: input, Response: "Router offline"})
-					m.CC.ConvView.GotoBottom()
-				} else {
-					m.CC.SetThinking(input)
-					m.CC.ConvView.GotoBottom()
-					m.taskMgr.AddOnce(input)
-				}
-			}
-		}
-		return nil
+		return m.handleEnter()
 
 	case msg.Code == tea.KeyUp:
-		if m.Topic.PopupOpen {
-			if m.Topic.SelIdx > 0 {
-				m.Topic.SelIdx--
-			}
-			return nil
-		}
-		switch m.focused {
-		case focusLogs:
-			m.Log.View.ScrollUp(3)
-		case focusConv:
-			m.CC.ConvView.ScrollUp(3)
-		case focusTopics:
-			if m.Topic.RecentIdx > 0 {
-				m.Topic.RecentIdx--
-			}
-		case focusInput:
-			if m.CC.TextInput.Value() == "" && m.CC.LastSubmitted != "" {
-				m.CC.TextInput.SetValue(m.CC.LastSubmitted)
-				m.CC.TextInput.SetCursor(len(m.CC.LastSubmitted))
-			}
-		}
-		return nil
+		return m.handleArrowUp()
 
 	case msg.Code == tea.KeyDown:
-		if m.Topic.PopupOpen {
-			if m.Topic.SelIdx < len(m.Topic.Filtered)-1 {
-				m.Topic.SelIdx++
-			}
-			return nil
-		}
-		switch m.focused {
-		case focusLogs:
-			m.Log.View.ScrollDown(3)
-		case focusConv:
-			m.CC.ConvView.ScrollDown(3)
-		case focusTopics:
-			all := m.topicMgr.ListTopics()
-			limit := 5
-			if len(all) > limit {
-				all = all[:limit]
-			}
-			if m.Topic.RecentIdx < len(all)-1 {
-				m.Topic.RecentIdx++
-			}
-		}
-		return nil
+		return m.handleArrowDown()
 
 	case msg.Code == tea.KeyPgUp:
-		switch m.focused {
-		case focusLogs:
-			m.Log.View.ScrollUp(m.Log.View.Height())
-		case focusConv:
-			m.CC.ConvView.ScrollUp(m.CC.ConvView.Height())
-		case focusTopics:
-			m.Topic.View.ScrollUp(m.Topic.View.Height())
-		}
-		return nil
+		return m.handlePageUp()
 
 	case msg.Code == tea.KeyPgDown:
-		switch m.focused {
-		case focusLogs:
-			m.Log.View.ScrollDown(m.Log.View.Height())
-		case focusConv:
-			m.CC.ConvView.ScrollDown(m.CC.ConvView.Height())
-		case focusTopics:
-			m.Topic.View.ScrollDown(m.Topic.View.Height())
-		}
-		return nil
+		return m.handlePageDown()
 	}
 
 	if m.focused == focusInput {
 		var cmd tea.Cmd
-		m.CC.TextInput, cmd = m.CC.TextInput.Update(msg)
+		m.cc.textInput, cmd = m.cc.textInput.Update(msg)
 
-		if m.Topic.PopupOpen {
-			oldFilter := m.Topic.Filter
-			m.Topic.Filter = m.CC.TextInput.Value()
-			if m.Topic.Filter != oldFilter {
-				m.Topic.FilterTopics(m.topicMgr.ListTopics())
-				m.Topic.SelIdx = 0
+		if m.topic.popupOpen {
+			oldFilter := m.topic.filter
+			m.topic.filter = m.cc.textInput.Value()
+			if m.topic.filter != oldFilter {
+				m.topic.filterTopics(m.topicMgr.ListTopics())
+				m.topic.selIdx = 0
 			}
 		}
 
 		return cmd
+	}
+	return nil
+}
+
+func (m *Model) handleEscape() tea.Cmd {
+	if m.topic.popupOpen {
+		m.toggleTopicPopup()
+		return nil
+	}
+	if m.log.popupOpen {
+		m.log.popupOpen = false
+		if m.focused == focusLogs {
+			m.focused = focusInput
+			return m.cc.textInput.Focus()
+		}
+	}
+	return nil
+}
+
+func (m *Model) handleTab() tea.Cmd {
+	if m.topic.popupOpen {
+		m.selectCurrentTopic()
+		return nil
+	}
+	if m.focused == focusInput {
+		val := m.cc.textInput.Value()
+		if strings.HasPrefix(val, "/") {
+			m.computeSlashMatches(val)
+			if len(m.cc.slashMatches) > 0 {
+				m.cc.slashIndex = (m.cc.slashIndex + 1) % len(m.cc.slashMatches)
+				m.cc.textInput.SetValue(m.cc.slashMatches[m.cc.slashIndex])
+				m.cc.textInput.SetCursor(len(m.cc.slashMatches[m.cc.slashIndex]))
+			}
+			return nil
+		}
+	}
+	switch m.focused {
+	case focusLogs:
+		m.focused = focusInput
+		return m.cc.textInput.Focus()
+	case focusInput:
+		m.focused = focusConv
+		m.cc.textInput.Blur()
+		return nil
+	case focusConv:
+		if m.log.popupOpen {
+			m.focused = focusLogs
+			m.cc.textInput.Blur()
+			m.log.view.GotoBottom()
+			return nil
+		}
+		m.focused = focusTopics
+		m.cc.textInput.Blur()
+		return nil
+	case focusTopics:
+		m.focused = focusInput
+		return m.cc.textInput.Focus()
+	}
+	return nil
+}
+
+func (m *Model) handleEnter() tea.Cmd {
+	if m.focused == focusTopics {
+		m.selectRecentTopic()
+		return nil
+	}
+	if m.focused == focusInput {
+		input := strings.TrimSpace(m.cc.textInput.Value())
+
+		if len(m.cc.slashMatches) > 0 && strings.HasPrefix(input, "/") && input != m.cc.slashMatches[m.cc.slashIndex] {
+			input = m.cc.slashMatches[m.cc.slashIndex]
+		}
+
+		if m.topic.popupOpen {
+			m.selectCurrentTopic()
+			return nil
+		}
+
+		m.cc.textInput.SetValue("")
+		m.cc.slashMatches = nil
+		m.cc.slashIndex = 0
+
+		if input == "quit" || input == "exit" || input == ":q" || input == "/quit" || input == "/q" {
+			return tea.Quit
+		}
+		if input == "/log" || input == "/logs" || input == "/l" {
+			m.toggleLogPopup()
+			return nil
+		}
+		if input == "/good" || input == "/bad" {
+			positive := input == "/good"
+			if m.lastInput != "" {
+				m.feedback.RecordRating(m.lastInput, positive)
+				msg := fmt.Sprintf("Feedback recorded: %s for \"%s\"", input, m.lastInput)
+				m.logger.Info("FEEDBACK", msg)
+				m.events <- logMsg{message: fmt.Sprintf("[FEEDBACK][INFO] %s", msg)}
+			}
+			return nil
+		}
+		if input == "/new" {
+			m.handleNewTopic()
+			return nil
+		}
+		if input == "/fork" {
+			m.handleForkTopic()
+			return nil
+		}
+		if input == "/resume" {
+			m.handleResumeTopic()
+			return nil
+		}
+		if input == "/topic" || input == "/topics" {
+			m.toggleTopicPopup()
+			return nil
+		}
+		if strings.HasPrefix(input, "/topic ") {
+			m.handleSwitchTopic(strings.TrimSpace(strings.TrimPrefix(input, "/topic ")))
+			return nil
+		}
+
+		m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
+		if input != "" {
+			m.cc.lastSubmitted = input
+			if !m.system.routerOnline {
+				m.cc.conversations = append(m.cc.conversations, conversationEntry{input: input, response: "Router offline"})
+				m.cc.convView.GotoBottom()
+			} else {
+				m.cc.setThinking(input)
+				m.cc.convView.GotoBottom()
+				m.taskMgr.AddOnce(input)
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Model) handleArrowUp() tea.Cmd {
+	if m.topic.popupOpen {
+		if m.topic.selIdx > 0 {
+			m.topic.selIdx--
+		}
+		return nil
+	}
+	switch m.focused {
+	case focusLogs:
+		m.log.view.ScrollUp(3)
+	case focusConv:
+		m.cc.convView.ScrollUp(3)
+	case focusTopics:
+		if m.topic.recentIdx > 0 {
+			m.topic.recentIdx--
+		}
+	case focusInput:
+		if m.cc.textInput.Value() == "" && m.cc.lastSubmitted != "" {
+			m.cc.textInput.SetValue(m.cc.lastSubmitted)
+			m.cc.textInput.SetCursor(len(m.cc.lastSubmitted))
+		}
+	}
+	return nil
+}
+
+func (m *Model) handleArrowDown() tea.Cmd {
+	if m.topic.popupOpen {
+		if m.topic.selIdx < len(m.topic.filtered)-1 {
+			m.topic.selIdx++
+		}
+		return nil
+	}
+	switch m.focused {
+	case focusLogs:
+		m.log.view.ScrollDown(3)
+	case focusConv:
+		m.cc.convView.ScrollDown(3)
+	case focusTopics:
+		all := m.topicMgr.ListTopics()
+		limit := 5
+		if len(all) > limit {
+			all = all[:limit]
+		}
+		if m.topic.recentIdx < len(all)-1 {
+			m.topic.recentIdx++
+		}
+	}
+	return nil
+}
+
+func (m *Model) handlePageUp() tea.Cmd {
+	switch m.focused {
+	case focusLogs:
+		m.log.view.ScrollUp(m.log.view.Height())
+	case focusConv:
+		m.cc.convView.ScrollUp(m.cc.convView.Height())
+	case focusTopics:
+		m.topic.view.ScrollUp(m.topic.view.Height())
+	}
+	return nil
+}
+
+func (m *Model) handlePageDown() tea.Cmd {
+	switch m.focused {
+	case focusLogs:
+		m.log.view.ScrollDown(m.log.view.Height())
+	case focusConv:
+		m.cc.convView.ScrollDown(m.cc.convView.Height())
+	case focusTopics:
+		m.topic.view.ScrollDown(m.topic.view.Height())
 	}
 	return nil
 }
@@ -591,20 +616,20 @@ func (m *Model) handleMouseWheel(mouse tea.Mouse) {
 	if mouse.Button == tea.MouseWheelUp {
 		switch m.focused {
 		case focusLogs:
-			m.Log.View.ScrollUp(3)
+			m.log.view.ScrollUp(3)
 		case focusConv:
-			m.CC.ConvView.ScrollUp(3)
+			m.cc.convView.ScrollUp(3)
 		case focusTopics:
-			m.Topic.View.ScrollUp(3)
+			m.topic.view.ScrollUp(3)
 		}
 	} else if mouse.Button == tea.MouseWheelDown {
 		switch m.focused {
 		case focusLogs:
-			m.Log.View.ScrollDown(3)
+			m.log.view.ScrollDown(3)
 		case focusConv:
-			m.CC.ConvView.ScrollDown(3)
+			m.cc.convView.ScrollDown(3)
 		case focusTopics:
-			m.Topic.View.ScrollDown(3)
+			m.topic.view.ScrollDown(3)
 		}
 	}
 }
@@ -616,11 +641,11 @@ func (m *Model) handleMouseClick(mouse tea.Mouse) tea.Cmd {
 	if mouse.X < 30 {
 		return nil
 	}
-	if m.Topic.PopupOpen {
+	if m.topic.popupOpen {
 		itemY := mouse.Y - 2 - 1
-		if itemY >= 0 && itemY < len(m.Topic.Filtered) {
+		if itemY >= 0 && itemY < len(m.topic.filtered) {
 			m.toggleTopicPopup()
-			m.handleSwitchTopic(m.Topic.Filtered[itemY].ID)
+			m.handleSwitchTopic(m.topic.filtered[itemY].ID)
 		}
 	}
 	return nil
@@ -634,8 +659,8 @@ var slashCommands = []string{
 }
 
 func (m *Model) computeSlashMatches(prefix string) {
-	m.CC.SlashMatches = nil
-	m.CC.SlashIndex = 0
+	m.cc.slashMatches = nil
+	m.cc.slashIndex = 0
 	if !strings.HasPrefix(prefix, "/") || prefix == "/" {
 		return
 	}
@@ -645,7 +670,7 @@ func (m *Model) computeSlashMatches(prefix string) {
 	}
 	for _, cmd := range slashCommands {
 		if strings.HasPrefix(cmd, prefix) && cmd != prefix {
-			m.CC.SlashMatches = append(m.CC.SlashMatches, cmd)
+			m.cc.slashMatches = append(m.cc.slashMatches, cmd)
 		}
 	}
 }
@@ -655,7 +680,7 @@ func (m *Model) computeTopicMatches(prefix string) {
 	for i := range topics {
 		label := fmt.Sprintf("/topic %d", i+1)
 		if strings.HasPrefix(label, prefix) {
-			m.CC.SlashMatches = append(m.CC.SlashMatches, label)
+			m.cc.slashMatches = append(m.cc.slashMatches, label)
 		}
 	}
 }
@@ -663,33 +688,33 @@ func (m *Model) computeTopicMatches(prefix string) {
 // ─── Popup Toggles ───
 
 func (m *Model) toggleTopicPopup() {
-	m.Topic.PopupOpen = !m.Topic.PopupOpen
-	if m.Topic.PopupOpen {
-		m.Topic.Filter = ""
-		m.Topic.SelIdx = 0
-		m.CC.TextInput.SetValue("")
-		m.CC.TextInput.Placeholder = " Search topics (↑↓ navigate, Enter/Tab select)"
-		m.Topic.FilterTopics(m.topicMgr.ListTopics())
+	m.topic.popupOpen = !m.topic.popupOpen
+	if m.topic.popupOpen {
+		m.topic.filter = ""
+		m.topic.selIdx = 0
+		m.cc.textInput.SetValue("")
+		m.cc.textInput.Placeholder = " Search topics (↑↓ navigate, Enter/Tab select)"
+		m.topic.filterTopics(m.topicMgr.ListTopics())
 		m.focused = focusInput
-		m.CC.TextInput.Focus()
-		m.Topic.View.GotoBottom()
+		m.cc.textInput.Focus()
+		m.topic.view.GotoBottom()
 	} else {
-		m.Topic.Filter = ""
-		m.CC.TextInput.Placeholder = " Type a command... (/topic → topics /log → logs)"
+		m.topic.filter = ""
+		m.cc.textInput.Placeholder = " Type a command... (/topic → topics /log → logs)"
 		m.focused = focusInput
-		m.CC.TextInput.Focus()
+		m.cc.textInput.Focus()
 	}
 }
 
 func (m *Model) toggleLogPopup() {
-	m.Log.PopupOpen = !m.Log.PopupOpen
-	if m.Log.PopupOpen {
+	m.log.popupOpen = !m.log.popupOpen
+	if m.log.popupOpen {
 		m.focused = focusLogs
-		m.CC.TextInput.Blur()
-		m.Log.View.GotoBottom()
+		m.cc.textInput.Blur()
+		m.log.view.GotoBottom()
 	} else {
 		m.focused = focusInput
-		m.CC.TextInput.Focus()
+		m.cc.textInput.Focus()
 	}
 }
 
@@ -701,9 +726,9 @@ func (m *Model) handleNewTopic() {
 		m.logger.Info("TOPIC", fmt.Sprintf("Creating new topic (was: %s)", cur.Title))
 	}
 
-	_ = m.topicMgr.CreateTopic("Topic N")
-	m.CC.SetConversationsFromTurns(nil)
-	m.CC.ConvView.GotoBottom()
+	m.topicMgr.CreateTopic("Topic N")
+	m.cc.setConversationsFromTurns(nil)
+	m.cc.convView.GotoBottom()
 
 	msg := fmt.Sprintf("Started new topic")
 	m.logger.Info("TOPIC", msg)
@@ -718,12 +743,12 @@ func (m *Model) handleForkTopic() {
 
 	t := m.topicMgr.ForkTopic("Fork of " + cur.Title)
 	turns := m.topicMgr.LoadTopicTurns(t.ID)
-	convTurns := make([]components.ConversationEntry, len(turns))
+	convTurns := make([]conversationEntry, len(turns))
 	for i, turn := range turns {
-		convTurns[i] = components.ConversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)}
+		convTurns[i] = conversationEntry{input: turn.Input, response: stripMarkdown(turn.Response)}
 	}
-	m.CC.SetConversationsFromTurns(convTurns)
-	m.CC.ConvView.GotoBottom()
+	m.cc.setConversationsFromTurns(convTurns)
+	m.cc.convView.GotoBottom()
 
 	msg := fmt.Sprintf("Forked topic: %s → %s", cur.Title, t.Title)
 	m.logger.Info("TOPIC", msg)
@@ -740,12 +765,12 @@ func (m *Model) handleResumeTopic() {
 	}
 
 	turns := m.topicMgr.LoadTopicTurns(t.ID)
-	convTurns := make([]components.ConversationEntry, len(turns))
+	convTurns := make([]conversationEntry, len(turns))
 	for i, turn := range turns {
-		convTurns[i] = components.ConversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)}
+		convTurns[i] = conversationEntry{input: turn.Input, response: stripMarkdown(turn.Response)}
 	}
-	m.CC.SetConversationsFromTurns(convTurns)
-	m.CC.ConvView.GotoBottom()
+	m.cc.setConversationsFromTurns(convTurns)
+	m.cc.convView.GotoBottom()
 
 	msg := fmt.Sprintf("Resumed topic: %s (%s)", t.Title, t.ID)
 	m.logger.Info("TOPIC", msg)
@@ -762,12 +787,12 @@ func (m *Model) handleSwitchTopic(arg string) {
 	if m.topicMgr.SwitchToTopic(arg) {
 		cur := m.topicMgr.CurrentTopic()
 		turns := m.topicMgr.LoadTopicTurns(cur.ID)
-		convTurns := make([]components.ConversationEntry, len(turns))
+		convTurns := make([]conversationEntry, len(turns))
 		for i, turn := range turns {
-			convTurns[i] = components.ConversationEntry{Input: turn.Input, Response: stripMarkdown(turn.Response)}
+			convTurns[i] = conversationEntry{input: turn.Input, response: stripMarkdown(turn.Response)}
 		}
-		m.CC.SetConversationsFromTurns(convTurns)
-		m.CC.ConvView.GotoBottom()
+		m.cc.setConversationsFromTurns(convTurns)
+		m.cc.convView.GotoBottom()
 
 		msg := fmt.Sprintf("Switched to topic: %s (%d turns)", cur.Title, len(turns))
 		m.logger.Info("TOPIC", msg)
@@ -785,19 +810,19 @@ func (m *Model) selectRecentTopic() {
 	if len(all) > limit {
 		all = all[:limit]
 	}
-	if m.Topic.RecentIdx >= 0 && m.Topic.RecentIdx < len(all) {
-		m.handleSwitchTopic(all[m.Topic.RecentIdx].ID)
+	if m.topic.recentIdx >= 0 && m.topic.recentIdx < len(all) {
+		m.handleSwitchTopic(all[m.topic.recentIdx].ID)
 	}
 }
 
 func (m *Model) selectCurrentTopic() {
-	if len(m.Topic.Filtered) == 0 {
+	if len(m.topic.filtered) == 0 {
 		return
 	}
-	idx := m.Topic.SelIdx
-	if idx < 0 || idx >= len(m.Topic.Filtered) {
+	idx := m.topic.selIdx
+	if idx < 0 || idx >= len(m.topic.filtered) {
 		return
 	}
 	m.toggleTopicPopup()
-	m.handleSwitchTopic(m.Topic.Filtered[idx].ID)
+	m.handleSwitchTopic(m.topic.filtered[idx].ID)
 }

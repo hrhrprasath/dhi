@@ -15,7 +15,7 @@ type LlmConfig struct {
 	Model    string `yaml:"model"`
 }
 
-func (l *LlmConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *LlmConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*l = LlmConfig{
 		Endpoint: "http://localhost:11434",
 		Model:    "qwen2.5:1.5b",

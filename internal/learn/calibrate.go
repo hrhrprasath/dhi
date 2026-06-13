@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+var defaultBuckets = []ConfidenceBucket{
+	{Low: 0.5, High: 0.6},
+	{Low: 0.6, High: 0.7},
+	{Low: 0.7, High: 0.8},
+	{Low: 0.8, High: 0.9},
+	{Low: 0.9, High: 1.0},
+}
+
 func (e *Engine) Calibrate(rawConfidence float64, pipeline string) float64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()

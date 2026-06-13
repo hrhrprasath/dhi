@@ -28,7 +28,7 @@ func New(model, endpoint string) *Summarizer {
 func (s *Summarizer) Summarize(rawData, pipeline, userInput, conversationContext string) string {
 	p := prompt.SynthesisPrompt(rawData, pipeline, userInput, conversationContext)
 
-	req := map[string]interface{}{
+	req := map[string]any{
 		"model":  s.model,
 		"prompt": p,
 		"stream": false,

@@ -160,7 +160,7 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 
 	params := make(map[string]string)
 	if intentResult.Params != nil {
-		var raw map[string]interface{}
+		var raw map[string]any
 		if json.Unmarshal(intentResult.Params, &raw) == nil {
 			for k, v := range raw {
 				params[k] = fmt.Sprintf("%v", v)
