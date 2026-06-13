@@ -3,7 +3,6 @@ package pipeline
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"dhi_harness/internal/task"
@@ -21,8 +20,6 @@ func NewHandlers(todoMgr *todo.Manager, taskMgr *task.Manager) *Handlers {
 
 func (h *Handlers) Execute(handler string, params map[string]string) string {
 	switch handler {
-	case "system_metrics":
-		return h.systemMetrics()
 	case "todo":
 		return h.handleTodo(params["action"], params["text"])
 	case "schedule":
@@ -130,15 +127,4 @@ func (h *Handlers) handleSchedule(action, when, command, scheduleID, schedulesJS
 	}
 }
 
-func (h *Handlers) systemMetrics() string {
-	kernel, _ := exec.Command("uname", "-r").Output()
-	hostname, _ := exec.Command("uname", "-n").Output()
-	uptime, _ := exec.Command("uptime").Output()
 
-	return fmt.Sprintf(`Kernel: %s
-Hostname: %s
-Uptime: %s`,
-		strings.TrimSpace(string(kernel)),
-		strings.TrimSpace(string(hostname)),
-		strings.TrimSpace(string(uptime)))
-}

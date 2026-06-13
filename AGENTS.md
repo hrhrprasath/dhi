@@ -141,7 +141,7 @@ StatusWaiting    // scheduled, waiting for time
 - `tui/update.go` — Key handling, background loops, processTasks, pipeline/conversation handlers
 - `internal/intent/router.go` — Ollama classify + chat, ParsedIntent with confidence
 - `internal/pipeline/executor.go` — FindAndExecute, action dispatch (bash, internal, http, exec, open)
-- `internal/pipeline/handlers.go` — Internal handlers (todo, system_metrics, schedule)
+- `internal/pipeline/handlers.go` — Internal handlers (todo, schedule)
 - `internal/pipeline/manager.go` — Pipeline definitions, YAML loading, defaults
 - `internal/task/manager.go` — Task CRUD, persistence, 60s looper
 - `internal/task/time.go` — TimeParser interface + DefaultParser (natural language → time)

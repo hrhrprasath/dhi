@@ -1,2 +1,11 @@
 #!/bin/bash
-w3m -dump "$*"
+
+if ! command -v agent-browser &>/dev/null; then
+  echo "Error: agent-browser not found. Install with: brew install agent-browser && agent-browser install" >&2
+  exit 1
+fi
+
+# Keep browser alive in daemon for fast subsequent calls.
+# Use a standard Chrome UA and wait 3s for JS to render.
+AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+agent-browser batch "open $*" "wait 3000" "get text body" 2>/dev/null
