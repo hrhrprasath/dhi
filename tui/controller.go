@@ -181,7 +181,7 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 		reply = "Action completed"
 	}
 
-	if pipelineName == "search_inline" || pipelineName == "browse" {
+	if pipelineName == "web_search" || pipelineName == "fetch_url" {
 		m.lastSearchURLs = extractURLs(raw + "\n" + synth)
 		urls := m.lastSearchURLs
 		if len(urls) > 0 {

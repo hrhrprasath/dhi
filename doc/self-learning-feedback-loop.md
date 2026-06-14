@@ -48,7 +48,7 @@ A `internal/learn/` package that:
 ### PipelineStats (per-pipeline)
 ```json
 {
-  "name": "search_browser",
+  "name": "site_search",
   "total_calls": 49,
   "success_count": 45,
   "fail_count": 4,
@@ -70,7 +70,7 @@ A `internal/learn/` package that:
 ### KeywordStat (per-word, per-pipeline)
 ```json
 {
-  "pipeline": "browse",
+  "pipeline": "fetch_url",
   "count": 5,
   "success": 4
 }
@@ -98,9 +98,9 @@ A `internal/learn/` package that:
   "pipeline_stats": { ... },
   "calibration": { ... },
   "keyword_pipelines": {
-    "open": { "browse": {"pipeline":"browse","count":5,"success":4}, "system": {"pipeline":"system","count":2,"success":1} },
-    "link": { "browse": {"pipeline":"browse","count":5,"success":4} },
-    "documentation": { "search_browser": {"pipeline":"search_browser","count":5,"success":3} }
+    "open": { "fetch_url": {"pipeline":"fetch_url","count":5,"success":4}, "system": {"pipeline":"system","count":2,"success":1} },
+    "link": { "fetch_url": {"pipeline":"fetch_url","count":5,"success":4} },
+    "documentation": { "site_search": {"pipeline":"site_search","count":5,"success":3} }
   },
   "feedback_log": [ ... ],
   "last_updated": "2026-06-09T..."
@@ -179,17 +179,17 @@ The system does **not** hardcode stop words, keyword extraction rules, or NLP lo
 
 ### Pipeline schema with learned weights:
 ```
-event: EXECUTE_SEARCH_BROWSER
-description: Search the web using a browser
-weight: 0.3 | learned: 0.43 | accuracy: 92% (49) | trend: ↑
-keywords: open, link, url, website
+event: EXECUTE_SITE_SEARCH
+description: Search a specific website using the browser
+weight: 0.4 | learned: 0.43 | accuracy: 92% (49) | trend: ↑
+keywords: search on site, find on website, look up on platform
 ```
 
 ### Calibration block:
 ```
 CALIBRATION DATA:
-- EXECUTE_SEARCH_BROWSER: 92% accuracy (45/49 calls) | trend: ↑
-- EXECUTE_SEARCH_INLINE: 78% accuracy (112/144 calls) | trend: →
+- EXECUTE_SITE_SEARCH: 92% accuracy (45/49 calls) | trend: ↑
+- EXECUTE_WEB_SEARCH: 78% accuracy (112/144 calls) | trend: →
 - EXECUTE_STOCKS: 95% accuracy (38/40 calls) | trend: ↑
 ```
 
@@ -197,11 +197,11 @@ CALIBRATION DATA:
 ```
 KEYWORD-PIPELINE INSIGHTS:
 PIPELINE HINTS (from config):
-  BROWSE: open, link, url, website, page
+  FETCH_URL: read article, get page content, fetch url, summarize webpage
 LEARNED (from feedback):
-  "open" → BROWSE (80% success, 5 uses)
-  "link" → BROWSE (80% success, 5 uses)
-  "documentation" → SEARCH_BROWSER (60% success, 5 uses)
+  "open" → FETCH_URL (80% success, 5 uses)
+  "link" → FETCH_URL (80% success, 5 uses)
+  "documentation" → SITE_SEARCH (60% success, 5 uses)
   "system" → SYSTEM (95% success, 40 uses)
 ```
 
@@ -244,20 +244,20 @@ Pipelines can include explicit keyword hints to guide the LLM:
 
 ```yaml
 pipelines:
-  - name: browse
+  - name: fetch_url
     weight: 0.4
-    keywords: ["open", "link", "url", "website", "page"]
+    keywords: ["read article", "get page content", "fetch url", "summarize webpage"]
     action:
       type: bash
-      script: scripts/browse {url}
+      script: scripts/fetch_url {url}
       summarize: true
 
-  - name: search_browser
-    weight: 0.3
-    keywords: ["search", "find", "lookup", "google", "web"]
+  - name: site_search
+    weight: 0.4
+    keywords: ["search on site", "find on website", "look up on platform"]
     action:
       type: bash
-      script: scripts/search_browser {provider} {query}
+      script: "s --provider {site} {query}"
 
   - name: system
     weight: 0.6

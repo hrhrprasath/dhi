@@ -58,11 +58,10 @@ Each pipeline has a `weight` (0.3–0.9) shown to the LLM as a priority hint. Hi
 |--------|----------|
 | 0.9 | todo |
 | 0.8 | stocks, schedule |
-| 0.7 | search_inline |
+| 0.7 | web_search |
 | 0.6 | system |
 | 0.5 | music |
-| 0.4 | browse |
-| 0.3 | search_browser |
+| 0.4 | fetch_url, site_search |
 
 ---
 
@@ -84,18 +83,20 @@ find recipe for pasta
 what is quantum computing
 ```
 
-### 3. Search Browser
-Open a search in the default browser (only when explicitly asked).
+### 3. Site Search
+Open a search on a specific website in the default browser.
 ```
-open youtube in browser
-search wikipedia for go language
+search youtube for lofi beats
+find on wikipedia quantum computing
+search reddit for golang projects
 ```
 
-### 4. Browse
-Read a webpage's content inline.
+### 4. Fetch URL
+Fetch a webpage's content and summarize it inline.
 ```
 read https://example.com/article
-open page https://news.ycombinator.com
+fetch https://news.ycombinator.com
+summarize https://go.dev/doc/
 ```
 
 ### 5. Music

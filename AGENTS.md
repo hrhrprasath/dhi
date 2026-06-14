@@ -17,7 +17,7 @@ DHI is a Terminal AI OS inspired by Her (movie), Batman AI, and Jarvis/Ironman. 
 - **Meat (Execution):** Pure Go pipelines (event-driven, zero AI tool calls) hit APIs/scrapers via bash scripts or internal handlers
 - **Bottom Bread (Synthesis):** Same local model (Qwen via Ollama) converts raw data → human summary
 
-**Pipelines:** stocks, search_inline, search_browser, browse, music (external YAML-defined), todo, system, schedule (internal Go-defined)
+**Pipelines:** stocks, web_search, site_search, fetch_url, music (external YAML-defined), todo, system, schedule (internal Go-defined)
 
 **Task System:** Universal unit of work replacing input/output queues. Tasks are one-shot (execute immediately) or scheduled (cron-based). A 60s looper scans for due scheduled tasks.
 
@@ -146,7 +146,7 @@ StatusWaiting    // scheduled, waiting for time
 - `internal/task/manager.go` — Task CRUD, persistence, 60s looper
 - `internal/task/time.go` — TimeParser interface + DefaultParser (natural language → time)
 - `internal/prompt/templates.go` — Classify/Conversation/Synthesis prompts, BuildSchema
-- `config/pipelines.yaml` — External pipeline definitions (stocks, search*, browse, music)
+- `config/pipelines.yaml` — External pipeline definitions (stocks, web_search, site_search, fetch_url, music)
 - `PENDING.md` — Remaining work items
 
 ---

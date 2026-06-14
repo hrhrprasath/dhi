@@ -1,72 +1,78 @@
 pipelines:
   - name: stocks
-    description: Stock queries with news (stock, share, nifty, sensex, mutual fund, investing, buy, sell) anything related to stocks fundamental live stock data and related news
+    description: Stock queries with live data and related news
+    keywords: [stock, share, nifty, sensex, mutual fund, investing]
     weight: 0.8
     params:
       - name: company
         required: true
-        extract_hint: "Extract company name, stock symbol, or index from the input (e.g., 'nifty50', 'apple', 'reliance')"
+        extract_hint: "Company name, stock symbol, or index (e.g., 'nifty50', 'apple', 'reliance')"
     action:
       type: bash
       script: "scripts/stock {company}"
 
-  - name: search_inline
-    description: Search web and display results inline — use for any question that needs live/fresh information (search, find, what is, how to, google, tell me about, tell me, summarize, explain, what is, who is, when did, where is, lookup, research)
+  - name: web_search
+    description: Search the web and display results inline with summaries — general knowledge, lookup, research
+    keywords: [what is, how to, who is, when did, where is, define, meaning, lookup, research, tell me about, find information on, search for]
     weight: 0.7
     params:
       - name: query
         required: true
-        extract_hint: "Extract the search query or topic from the user input (e.g., 'latest AI news 2026', 'how to cook pasta', 'tell me about black holes')"
+        extract_hint: "The search query or topic (e.g., 'latest AI news 2026', 'how to cook pasta')"
     action:
       type: bash
       summarize: true
       summarize_ignore_context: true
-      script: "scripts/search_inline {query}"
+      script: "scripts/web_search {query}"
 
-  - name: search_browser
-    description: Open a website or search in default browser — only when explicitly asked to open/open in browser (open youtube, open wikipedia, open in browser)
-    weight: 0.3
+  - name: site_search
+    description: Open a search on a specific website in the default browser — site-specific searches
+    keywords: [search on site, look up on website, find on youtube, find on wikipedia, find on reddit, find on github, search on platform]
+    weight: 0.4
     params:
+      - name: site
+        required: true
+        extract_hint: "Site to search on (e.g., youtube, wikipedia, reddit, github, twitter, imdb, amazon)"
       - name: query
         required: true
-      - name: provider
-        required: false
-        default: duckduckgo
+        extract_hint: "What to search for on the site"
     action:
       type: bash
-      script: "scripts/search_browser {provider} {query}"
+      script: "s --provider {site} {query}"
 
-  - name: browse
-    description: Read a webpage content inline (read article, open page, fetch url, get website)
+  - name: fetch_url
+    description: Fetch and summarize a webpage without opening the browser
+    keywords: [read article, get page content, fetch url, summarize webpage, extract text from url, show website content, read this page]
     weight: 0.4
     params:
       - name: url
         required: true
+        extract_hint: "Full URL to fetch (e.g., 'https://example.com/article')"
     action:
       type: bash
       summarize: true
-      script: "scripts/browse {url}"
+      script: "scripts/fetch_url {url}"
+
+  - name: open_url
+    description: Open a URL in the default browser
+    keywords: [open in browser, launch website, go to url, visit webpage, navigate to, take me to, open youtube, open wikipedia]
+    weight: 0.4
+    params:
+      - name: url
+        required: true
+        extract_hint: "Full URL or website name (e.g., 'https://github.com', 'youtube.com')"
+    action:
+      type: bash
+      script: "scripts/open_url {url}"
 
   - name: music
-    description: Music playback/search (play, song, music, podcast, spotify) — opens Spotify and searches for the query
+    description: Music playback and search on Spotify
+    keywords: [play music, song, podcast, spotify, listen to, play artist]
     weight: 0.5
     params:
       - name: query
         required: true
-        extract_hint: "Extract the song name, artist, or podcast to search on Spotify"
+        extract_hint: "Song name, artist, or podcast to search on Spotify"
     action:
       type: bash
       script: "scripts/spotify {query}"
-
-  - name: open_browser
-    description: Open any URL or website in the default browser (open, open browser, visit, go to, launch, show me, take me to)
-    weight: 0.4
-    params:
-      - name: url
-        required: true
-        extract_hint: "Extract the full URL or website name from the user input (e.g., 'https://github.com', 'youtube.com', 'reddit')"
-    action:
-      type: bash
-      script: "scripts/open_browser {url}"
-
-

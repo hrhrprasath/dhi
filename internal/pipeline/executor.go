@@ -85,7 +85,7 @@ func (e *Executor) eventToPipeline(event string) string {
 			return name
 		}
 	}
-	return "search_inline"
+	return "web_search"
 }
 
 func (e *Executor) validate(defs []ParamDefinition, params map[string]string) string {

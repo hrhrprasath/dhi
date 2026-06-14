@@ -158,9 +158,9 @@ Pipelines are either:
 | Pipeline | Action | Summarize | Ignore Context |
 |----------|--------|-----------|----------------|
 | `stocks` | `scripts/stock {company}` | no | — |
-| `search_inline` | `scripts/search_inline {query}` | yes | yes |
-| `search_browser` | `scripts/search_browser {provider} {query}` | no | — |
-| `browse` | `scripts/browse {url}` | yes | no |
+| `web_search` | `scripts/web_search {query}` | yes | yes |
+| `site_search` | `s --provider {site} {query}` | no | — |
+| `fetch_url` | `scripts/fetch_url {url}` | yes | no |
 | `music` | `scripts/spotify {query}` | no | — |
 
 ### Internal Pipelines (Go Code)

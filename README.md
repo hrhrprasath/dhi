@@ -26,7 +26,7 @@ go build -o build/dhi ./cmd/dhi && ./build/dhi
 │   ├── task/              # Task CRUD, persistence, scheduled task looper
 │   └── todo/              # Todo CRUD
 ├── tui/                   # Bubble Tea TUI (types, model, view, update)
-├── config/pipelines.yaml  # Pipeline definitions (stocks, search, browse, music)
+├── config/pipelines.yaml  # Pipeline definitions (stocks, web_search, site_search, fetch_url, music)
 ├── doc/                   # Design documents
 └── docs/                  # Architecture analysis, user guide
 ```
@@ -36,9 +36,9 @@ go build -o build/dhi ./cmd/dhi && ./build/dhi
 | Pipeline | Type | Weight | Description |
 |----------|------|--------|-------------|
 | stocks | bash | 0.8 | Stock price lookup |
-| search_inline | bash | 0.7 | DuckDuckGo search |
-| search_browser | bash | 0.3 | Browser web search |
-| browse | bash | 0.4 | Open URL in browser |
+| web_search | bash | 0.7 | Web search inline with summaries |
+| site_search | bash | 0.4 | Site-specific browser search |
+| fetch_url | bash | 0.4 | Fetch URL content inline |
 | music | bash | 0.5 | Spotify control |
 | todo | internal | 0.9 | Todo/reminder CRUD |
 | system | internal | 0.6 | System metrics |

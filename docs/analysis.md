@@ -41,7 +41,7 @@ User ──► taskMgr.AddOnce(rawInput) ──► processTasks() ──► Rout
 |--------|-----|--------|
 | Input queue AFTER LLM | Task system stores raw input BEFORE classification | Crash recovery; retries preserve original input |
 | Output queue + display + persist | Task stores result; TUI reads from event channel | No dual-consumer inconsistency |
-| 7 varied pipelines | 8 focused pipelines (stocks, search, browse, music, todo, system, schedule...) | Simpler, more focused |
+| 7 varied pipelines | 9 focused pipelines (stocks, web_search, site_search, fetch_url, music, todo, system, schedule...) | Simpler, more focused |
 | curl subprocess only | bash/http/exec/open/internal + interpolation | Same pragmatic approach, all in stdlib |
 
 ---
@@ -161,7 +161,7 @@ Production readiness:              4/10  (no auth, no graceful shutdown of gorou
 
 Current state:
 - ✅ Task system persists raw input before LLM (crash-safe)
-- ✅ 8 focused pipelines (stocks, search, browse, music, todo, system, schedule...)
+- ✅ 9 focused pipelines (stocks, web_search, site_search, fetch_url, music, todo, system, schedule...)
 - ✅ Goroutine + channel concurrency model
 - ✅ Bubble Tea v2 TUI
 - ✅ Self-learning feedback loop (learn.Engine with keyword-pipeline tracking)
