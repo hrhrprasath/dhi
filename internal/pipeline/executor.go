@@ -33,6 +33,14 @@ func NewExecutor(manager *Manager, sum *summarizer.Summarizer, taskMgr *task.Man
 	}
 }
 
+func (e *Executor) SetModel(name string) {
+	e.summarizer.SetModel(name)
+}
+
+func (e *Executor) SetContextSize(size int) {
+	e.summarizer.SetContextSize(size)
+}
+
 func (e *Executor) FindAndExecute(event string, params map[string]string, userInput, convCtx string) (raw string, synthesized string) {
 	pipelineName := e.eventToPipeline(event)
 	pl := e.manager.GetPipeline(pipelineName)

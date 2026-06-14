@@ -30,10 +30,11 @@ type WeightProvider interface {
 }
 
 type intentRequest struct {
-	Model  string          `json:"model"`
-	Prompt string          `json:"prompt"`
-	Stream bool            `json:"stream"`
-	Format json.RawMessage `json:"format,omitempty"`
+	Model   string          `json:"model"`
+	Prompt  string          `json:"prompt"`
+	Stream  bool            `json:"stream"`
+	Format  json.RawMessage `json:"format,omitempty"`
+	Options map[string]any  `json:"options,omitempty"`
 }
 
 type intentResponse struct {
@@ -46,17 +47,29 @@ type Router struct {
 	client   *http.Client
 	model    string
 	endpoint string
+	options  map[string]any
 	logger   *services.Logger
 	weights  WeightProvider
 }
 
-func NewRouter(model, endpoint string, logger *services.Logger) *Router {
+func NewRouter(endpoint string, logger *services.Logger) *Router {
 	logger.Info("ROUTER", "Intent Router initialized")
 	return &Router{
-		client:   &http.Client{Timeout: 30 * time.Second},
-		model:    model,
+		client:   &http.Client{Timeout: 4 * time.Minute},
+		model:    "",
 		endpoint: endpoint,
 		logger:   logger,
+	}
+}
+
+func (r *Router) SetModel(model string) {
+	r.model = model
+}
+
+func (r *Router) SetContextSize(size int) {
+	r.options = map[string]any{
+		"num_ctx":     size,
+		"num_predict": 1024,
 	}
 }
 
@@ -101,10 +114,11 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 	r.savePrompt(p)
 
 	req := intentRequest{
-		Model:  r.model,
-		Prompt: p,
-		Stream: false,
-		Format: json.RawMessage(`{"type": "object"}`),
+		Model:   r.model,
+		Prompt:  p,
+		Stream:  false,
+		Format:  json.RawMessage(`{"type": "object"}`),
+		Options: r.options,
 	}
 
 	resp, err := r.client.Post(
@@ -152,9 +166,10 @@ func (r *Router) GenerateTitle(userInput string) (string, error) {
 			"Return ONLY the title, nothing else.\n\nQuery: %s\n\nTitle:", userInput)
 
 	req := intentRequest{
-		Model:  r.model,
-		Prompt: titlePrompt,
-		Stream: false,
+		Model:   r.model,
+		Prompt:  titlePrompt,
+		Stream:  false,
+		Options: r.options,
 	}
 
 	resp, err := r.client.Post(
@@ -185,9 +200,10 @@ func (r *Router) Chat(userInput, summaryText, searchResults, topicTitle string) 
 	p := prompt.ConversationPrompt(userInput, summaryText, searchResults, topicTitle)
 
 	req := intentRequest{
-		Model:  r.model,
-		Prompt: p,
-		Stream: false,
+		Model:   r.model,
+		Prompt:  p,
+		Stream:  false,
+		Options: r.options,
 	}
 
 	resp, err := r.client.Post(

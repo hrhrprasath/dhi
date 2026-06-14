@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -54,9 +55,10 @@ type LearningData struct {
 const maxFeedbackLog = 500
 
 type Engine struct {
-	mu   sync.Mutex
-	data LearningData
-	path string
+	mu      sync.Mutex
+	data    LearningData
+	path    string
+	dataDir string
 }
 
 func defaultLearningData() LearningData {
@@ -71,9 +73,9 @@ func defaultLearningData() LearningData {
 func NewEngine(dataDir string) *Engine {
 	dir := filepath.Join(dataDir, "learn")
 	os.MkdirAll(dir, 0755)
-	p := filepath.Join(dir, "learning.json")
+	p := filepath.Join(dir, "_default", "learning.json")
 
-	e := &Engine{path: p}
+	e := &Engine{path: p, dataDir: dir}
 	e.data = e.load()
 	if e.data.Version == 0 {
 		e.data = defaultLearningData()
@@ -82,6 +84,25 @@ func NewEngine(dataDir string) *Engine {
 		e.data.KeywordPipelines = make(map[string]map[string]*KeywordStat)
 	}
 	return e
+}
+
+func (e *Engine) SetModel(name string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	sanitized := strings.ReplaceAll(name, "/", "_")
+	sanitized = strings.ReplaceAll(sanitized, " ", "_")
+	dir := filepath.Join(e.dataDir, sanitized)
+	os.MkdirAll(dir, 0755)
+	e.path = filepath.Join(dir, "learning.json")
+
+	e.data = e.load()
+	if e.data.Version == 0 {
+		e.data = defaultLearningData()
+	}
+	if e.data.KeywordPipelines == nil {
+		e.data.KeywordPipelines = make(map[string]map[string]*KeywordStat)
+	}
 }
 
 func (e *Engine) load() LearningData {

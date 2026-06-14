@@ -126,5 +126,3 @@ func (h *Handlers) handleSchedule(action, when, command, scheduleID, schedulesJS
 		return "Schedule action must be: add, list, delete, update"
 	}
 }
-
-

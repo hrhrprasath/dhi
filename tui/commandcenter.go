@@ -50,7 +50,11 @@ func (cc *commandCenter) renderConv(w int, focused bool, topicTitle string) stri
 			sb.WriteString("You: ")
 			sb.WriteString(wrap.Render(c.input))
 			sb.WriteString("\n\nDHI: ")
-			sb.WriteString(wrap.Render(c.response))
+			response := c.response
+			if !c.thinking {
+				response = linkify(response)
+			}
+			sb.WriteString(wrap.Render(response))
 			sb.WriteString("\n\n")
 			sb.WriteString(strings.Repeat("─", w-2) + "\n\n")
 		}
@@ -61,18 +65,22 @@ func (cc *commandCenter) renderConv(w int, focused bool, topicTitle string) stri
 	)
 }
 
-func (cc *commandCenter) renderInput(w int, routerOnline bool, focused bool) string {
+func (cc *commandCenter) renderInput(w int, routerOnline bool, focused bool, modelName string) string {
 	style := borderStyle
 	if focused {
 		style = focusedBorderStyle
 	}
-	onlineStr := "● OFFLINE"
-	onlineColor := redColor
-	if routerOnline {
-		onlineStr = "● ONLINE"
-		onlineColor = greenColor
+	var statusStr string
+	var statusColor = redColor
+	if !routerOnline {
+		statusStr = "● OFFLINE"
+	} else if modelName == "" {
+		statusStr = "● NO MODEL"
+	} else {
+		statusStr = "● " + modelName
+		statusColor = greenColor
 	}
-	status := lipgloss.NewStyle().Foreground(onlineColor).Render(onlineStr)
+	status := lipgloss.NewStyle().Foreground(statusColor).Render(statusStr)
 
 	var content string
 	if len(cc.slashMatches) > 0 {

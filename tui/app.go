@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"dhi_harness/internal/config"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
 	"dhi_harness/internal/services"
+	"dhi_harness/internal/settings"
 	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
 	"dhi_harness/internal/topic"
@@ -26,6 +26,7 @@ type FeedbackRecorder interface {
 	RecordOutcome(input, predictedEvent, pipelineUsed string, confidence float64, success bool, wasConversation bool, errMsg string)
 	RecordConversation(input string)
 	RecordRating(input string, positive bool)
+	SetModel(name string)
 }
 
 type focusPanel int
@@ -35,18 +36,19 @@ const (
 	focusInput
 	focusConv
 	focusTopics
+	focusModels
 )
 
 type Model struct {
-	cfg      *config.Config
-	logger   *services.Logger
-	taskMgr  *task.Manager
-	router   *intent.Router
-	executor *pipeline.Executor
-	topicMgr *topic.Manager
-	sysSvc   *services.SystemService
-	todoMgr  *todo.Manager
-	feedback FeedbackRecorder
+	logger      *services.Logger
+	taskMgr     *task.Manager
+	router      *intent.Router
+	executor    *pipeline.Executor
+	topicMgr    *topic.Manager
+	sysSvc      *services.SystemService
+	todoMgr     *todo.Manager
+	feedback    FeedbackRecorder
+	settingsMgr *settings.Manager
 
 	width    int
 	height   int
@@ -54,24 +56,27 @@ type Model struct {
 	focused  focusPanel
 	focusCmd tea.Cmd
 
-	lastInput  string
-	lastIntent *intent.ParsedIntent
+	lastInput     string
+	lastIntent    *intent.ParsedIntent
+	lastSearchURLs []string
 
 	dhiOS    dhiOS
 	system   systemPanel
 	pipeline pipelinePanel
 	cc       commandCenter
 	topic    topicPanel
+	model    modelPanel
+	help     helpPanel
 	log      logPanel
 }
 
-func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
-	router *intent.Router, pipeExec *pipeline.Executor, topicMgr *topic.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, feedback FeedbackRecorder) *Model {
+func NewModel(logger *services.Logger, tm *task.Manager,
+	router *intent.Router, pipeExec *pipeline.Executor, topicMgr *topic.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, feedback FeedbackRecorder, settingsMgr *settings.Manager) *Model {
 
 	ti := textinput.New()
-	ti.Placeholder = " Type a command... (/topic → topics /log → logs)"
+	ti.Placeholder = " Type a command... (/help for help)"
 	ti.Prompt = "> "
-	ti.SetWidth(34)
+	ti.SetWidth(26)
 	focusCmd := ti.Focus()
 
 	initW := 40
@@ -80,6 +85,7 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
 	tv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
+	mv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(5))
 	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(10))
 	lv.SoftWrap = true
 	lv.SetContent("No logs yet...")
@@ -124,15 +130,15 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 	}
 
 	m := &Model{
-		cfg:      cfg,
-		logger:   logger,
-		taskMgr:  tm,
-		router:   router,
-		executor: pipeExec,
-		topicMgr: topicMgr,
-		sysSvc:   sysSvc,
-		todoMgr:  todoMgr,
-		feedback: feedback,
+		logger:      logger,
+		taskMgr:     tm,
+		router:      router,
+		executor:    pipeExec,
+		topicMgr:    topicMgr,
+		sysSvc:      sysSvc,
+		todoMgr:     todoMgr,
+		feedback:    feedback,
+		settingsMgr: settingsMgr,
 
 		focused:  focusInput,
 		focusCmd: focusCmd,
@@ -164,14 +170,27 @@ func NewModel(cfg *config.Config, logger *services.Logger, tm *task.Manager,
 		topic: topicPanel{
 			view: tv,
 		},
+		model: modelPanel{
+			view: mv,
+		},
+		help: newHelpPanel(),
 		log: logPanel{
 			view:    lv,
 			entries: []string{"[SYSTEM][INFO] DHI Harness initializing..."},
 		},
 	}
 
+	m.help.content = buildHelpContent(m.settingsMgr.Endpoint())
 	m.topic.filterTopics(m.topicMgr.ListTopics())
+	m.model.filterModels(m.settingsMgr.ListModels())
 	m.pipeline.render()
+
+	if cur := m.settingsMgr.CurrentModel(); cur != nil {
+		m.router.SetModel(cur.Name)
+		m.router.SetContextSize(m.settingsMgr.ContextLength())
+		m.executor.SetModel(cur.Name)
+		m.executor.SetContextSize(m.settingsMgr.ContextLength())
+	}
 
 	cur := m.topicMgr.CurrentTopic()
 	if cur != nil {
@@ -245,7 +264,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cc.convView.SetHeight(ch)
 		m.topic.view.SetWidth(vw - 2)
 		m.topic.view.SetHeight(ch)
-		m.cc.textInput.SetWidth(rw - 16)
+		m.model.view.SetWidth(vw - 2)
+		m.model.view.SetHeight(ch)
+		m.help.view.SetWidth(vw - 2)
+		m.help.view.SetHeight(ch)
+		m.cc.textInput.SetWidth(rw - 24)
 		return m, m.eventPoller()
 
 	case tickMsg:
@@ -327,10 +350,14 @@ func (m *Model) render() string {
 
 	var mainBlock string
 	switch {
+	case m.help.popupOpen:
+		mainBlock = m.help.renderPopup(rw)
 	case m.log.popupOpen:
 		mainBlock = m.log.renderPopup(rw)
 	case m.topic.popupOpen:
 		mainBlock = m.topic.renderPopup(rw, m.topicMgr.CurrentTopic())
+	case m.model.popupOpen:
+		mainBlock = m.model.renderPopup(rw, m.settingsMgr.CurrentModel())
 	default:
 		topicTitle := ""
 		if cur := m.topicMgr.CurrentTopic(); cur != nil {
@@ -339,9 +366,13 @@ func (m *Model) render() string {
 		mainBlock = m.cc.renderConv(rw, m.focused == focusConv, topicTitle)
 	}
 
+	modelName := ""
+	if cur := m.settingsMgr.CurrentModel(); cur != nil {
+		modelName = cur.Name
+	}
 	rightPanel := lipgloss.JoinVertical(lipgloss.Top,
 		mainBlock,
-		m.cc.renderInput(rw, m.system.routerOnline, m.focused == focusInput),
+		m.cc.renderInput(rw, m.system.routerOnline, m.focused == focusInput, modelName),
 	)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top,
@@ -394,8 +425,16 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			oldFilter := m.topic.filter
 			m.topic.filter = m.cc.textInput.Value()
 			if m.topic.filter != oldFilter {
-				m.topic.filterTopics(m.topicMgr.ListTopics())
+	m.topic.filterTopics(m.topicMgr.ListTopics())
 				m.topic.selIdx = 0
+			}
+		}
+		if m.model.popupOpen {
+			oldFilter := m.model.filter
+			m.model.filter = m.cc.textInput.Value()
+			if m.model.filter != oldFilter {
+				m.model.filterModels(m.settingsMgr.ListModels())
+				m.model.selIdx = 0
 			}
 		}
 
@@ -407,6 +446,14 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 func (m *Model) handleEscape() tea.Cmd {
 	if m.topic.popupOpen {
 		m.toggleTopicPopup()
+		return nil
+	}
+	if m.model.popupOpen {
+		m.toggleModelPopup()
+		return nil
+	}
+	if m.help.popupOpen {
+		m.toggleHelpPopup()
 		return nil
 	}
 	if m.log.popupOpen {
@@ -422,6 +469,10 @@ func (m *Model) handleEscape() tea.Cmd {
 func (m *Model) handleTab() tea.Cmd {
 	if m.topic.popupOpen {
 		m.selectCurrentTopic()
+		return nil
+	}
+	if m.model.popupOpen {
+		m.selectCurrentModel()
 		return nil
 	}
 	if m.focused == focusInput {
@@ -466,6 +517,10 @@ func (m *Model) handleEnter() tea.Cmd {
 		m.selectRecentTopic()
 		return nil
 	}
+	if m.focused == focusModels {
+		m.selectRecentModel()
+		return nil
+	}
 	if m.focused == focusInput {
 		input := strings.TrimSpace(m.cc.textInput.Value())
 
@@ -477,11 +532,29 @@ func (m *Model) handleEnter() tea.Cmd {
 			m.selectCurrentTopic()
 			return nil
 		}
+		if m.model.popupOpen {
+			m.selectCurrentModel()
+			return nil
+		}
+
+		if input == "" {
+			return nil
+		}
+
+		if !strings.HasPrefix(input, "/") && m.cc.thinking > 0 {
+			return nil
+		}
 
 		m.cc.textInput.SetValue("")
 		m.cc.slashMatches = nil
 		m.cc.slashIndex = 0
 
+		if input == "/help" || input == "/?" || input == ":h" {
+			// refresh content in case endpoint changed
+			m.help.content = buildHelpContent(m.settingsMgr.Endpoint())
+			m.toggleHelpPopup()
+			return nil
+		}
 		if input == "quit" || input == "exit" || input == ":q" || input == "/quit" || input == "/q" {
 			return tea.Quit
 		}
@@ -511,6 +584,18 @@ func (m *Model) handleEnter() tea.Cmd {
 			m.handleResumeTopic()
 			return nil
 		}
+		if input == "/model" || input == "/models" {
+			m.toggleModelPopup()
+			return nil
+		}
+		if strings.HasPrefix(input, "/model ") {
+			m.handleModelString(strings.TrimSpace(strings.TrimPrefix(input, "/model ")))
+			return nil
+		}
+		if u := parseOpenLink(input, m.lastSearchURLs); u != "" {
+			m.handleOpenURL(u)
+			return nil
+		}
 		if input == "/topic" || input == "/topics" {
 			m.toggleTopicPopup()
 			return nil
@@ -521,16 +606,14 @@ func (m *Model) handleEnter() tea.Cmd {
 		}
 
 		m.logger.Info("INPUT", fmt.Sprintf("User: %s", input))
-		if input != "" {
-			m.cc.lastSubmitted = input
-			if !m.system.routerOnline {
-				m.cc.conversations = append(m.cc.conversations, conversationEntry{input: input, response: "Router offline"})
-				m.cc.convView.GotoBottom()
-			} else {
-				m.cc.setThinking(input)
-				m.cc.convView.GotoBottom()
-				m.taskMgr.AddOnce(input)
-			}
+		m.cc.lastSubmitted = input
+		if !m.system.routerOnline {
+			m.cc.conversations = append(m.cc.conversations, conversationEntry{input: input, response: "Router offline"})
+			m.cc.convView.GotoBottom()
+		} else {
+			m.cc.setThinking(input)
+			m.cc.convView.GotoBottom()
+			m.taskMgr.AddOnce(input)
 		}
 	}
 	return nil
@@ -540,6 +623,12 @@ func (m *Model) handleArrowUp() tea.Cmd {
 	if m.topic.popupOpen {
 		if m.topic.selIdx > 0 {
 			m.topic.selIdx--
+		}
+		return nil
+	}
+	if m.model.popupOpen {
+		if m.model.selIdx > 0 {
+			m.model.selIdx--
 		}
 		return nil
 	}
@@ -565,6 +654,12 @@ func (m *Model) handleArrowDown() tea.Cmd {
 	if m.topic.popupOpen {
 		if m.topic.selIdx < len(m.topic.filtered)-1 {
 			m.topic.selIdx++
+		}
+		return nil
+	}
+	if m.model.popupOpen {
+		if m.model.selIdx < len(m.model.filtered)-1 {
+			m.model.selIdx++
 		}
 		return nil
 	}
@@ -648,6 +743,13 @@ func (m *Model) handleMouseClick(mouse tea.Mouse) tea.Cmd {
 			m.handleSwitchTopic(m.topic.filtered[itemY].ID)
 		}
 	}
+	if m.model.popupOpen {
+		itemY := mouse.Y - 2 - 1
+		if itemY >= 0 && itemY < len(m.model.filtered) {
+			m.toggleModelPopup()
+			m.handleModelSelect(m.model.filtered[itemY].Name)
+		}
+	}
 	return nil
 }
 
@@ -656,6 +758,7 @@ func (m *Model) handleMouseClick(mouse tea.Mouse) tea.Cmd {
 var slashCommands = []string{
 	"/good", "/bad", "/log", "/logs", "/quit",
 	"/new", "/fork", "/resume", "/topic", "/topics",
+	"/model", "/models", "/help", "/?",
 }
 
 func (m *Model) computeSlashMatches(prefix string) {
@@ -668,9 +771,23 @@ func (m *Model) computeSlashMatches(prefix string) {
 		m.computeTopicMatches(prefix)
 		return
 	}
+	if strings.HasPrefix(prefix, "/model ") || prefix == "/model" {
+		m.computeModelMatches(prefix)
+		return
+	}
 	for _, cmd := range slashCommands {
 		if strings.HasPrefix(cmd, prefix) && cmd != prefix {
 			m.cc.slashMatches = append(m.cc.slashMatches, cmd)
+		}
+	}
+}
+
+func (m *Model) computeModelMatches(prefix string) {
+	models := m.settingsMgr.ListModels()
+	for i := range models {
+		label := fmt.Sprintf("/model %d", i+1)
+		if strings.HasPrefix(label, prefix) {
+			m.cc.slashMatches = append(m.cc.slashMatches, label)
 		}
 	}
 }
@@ -700,7 +817,7 @@ func (m *Model) toggleTopicPopup() {
 		m.topic.view.GotoBottom()
 	} else {
 		m.topic.filter = ""
-		m.cc.textInput.Placeholder = " Type a command... (/topic → topics /log → logs)"
+		m.cc.textInput.Placeholder = " Type a command... (/help for help)"
 		m.focused = focusInput
 		m.cc.textInput.Focus()
 	}
@@ -716,6 +833,108 @@ func (m *Model) toggleLogPopup() {
 		m.focused = focusInput
 		m.cc.textInput.Focus()
 	}
+}
+
+func (m *Model) toggleHelpPopup() {
+	m.help.popupOpen = !m.help.popupOpen
+	if m.help.popupOpen {
+		m.cc.textInput.Blur()
+		m.focused = focusLogs
+		m.help.view.GotoBottom()
+	} else {
+		m.focused = focusInput
+		m.cc.textInput.Focus()
+	}
+}
+
+// ─── Model Popup / Commands ───
+
+func (m *Model) toggleModelPopup() {
+	m.model.popupOpen = !m.model.popupOpen
+	if m.model.popupOpen {
+		m.model.filter = ""
+		m.model.selIdx = 0
+		m.cc.textInput.SetValue("")
+		m.cc.textInput.Placeholder = " Search models (↑↓ navigate, Enter/Tab select)"
+		m.model.filterModels(m.settingsMgr.ListModels())
+		m.focused = focusInput
+		m.cc.textInput.Focus()
+		m.model.view.GotoBottom()
+	} else {
+		m.model.filter = ""
+		m.cc.textInput.Placeholder = " Type a command... (/help for help)"
+		m.focused = focusInput
+		m.cc.textInput.Focus()
+	}
+}
+
+func (m *Model) handleModelString(arg string) {
+	models := m.settingsMgr.ListModels()
+	if n, err := strconv.Atoi(arg); err == nil && n >= 1 && n <= len(models) {
+		m.handleModelSelect(models[n-1].Name)
+		return
+	}
+	argLower := strings.ToLower(arg)
+	for _, mdl := range models {
+		if strings.Contains(strings.ToLower(mdl.Name), argLower) {
+			m.handleModelSelect(mdl.Name)
+			return
+		}
+	}
+	msg := fmt.Sprintf("Model not found: %s", arg)
+	m.logger.Info("MODEL", msg)
+	m.events <- logMsg{message: fmt.Sprintf("[MODEL][INFO] %s", msg)}
+}
+
+func (m *Model) handleModelSelect(name string) {
+	if err := m.settingsMgr.SelectModel(name); err != nil {
+		m.logger.Info("MODEL", fmt.Sprintf("Failed to select model: %v", err))
+		m.events <- logMsg{message: fmt.Sprintf("[MODEL][ERROR] %v", err)}
+		return
+	}
+	m.router.SetModel(name)
+	m.router.SetContextSize(m.settingsMgr.ContextLength())
+	m.executor.SetModel(name)
+	m.executor.SetContextSize(m.settingsMgr.ContextLength())
+	m.feedback.SetModel(name)
+
+	msg := fmt.Sprintf("Switched to model: %s (%dK ctx)", name, m.settingsMgr.ContextLength()/1024)
+	m.logger.Info("MODEL", msg)
+	m.events <- logMsg{message: fmt.Sprintf("[MODEL][INFO] %s", msg)}
+}
+
+func (m *Model) selectRecentModel() {
+	all := m.settingsMgr.ListModels()
+	limit := 5
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	if m.model.recentIdx >= 0 && m.model.recentIdx < len(all) {
+		m.handleModelSelect(all[m.model.recentIdx].Name)
+	}
+}
+
+func (m *Model) selectCurrentModel() {
+	if len(m.model.filtered) == 0 {
+		return
+	}
+	idx := m.model.selIdx
+	if idx < 0 || idx >= len(m.model.filtered) {
+		return
+	}
+	m.toggleModelPopup()
+	m.handleModelSelect(m.model.filtered[idx].Name)
+}
+
+func (m *Model) handleOpenURL(url string) {
+	m.logger.Info("OPEN", fmt.Sprintf("Opening URL: %s", url))
+	if m.cc.thinking > 0 {
+		return
+	}
+	m.cc.lastSubmitted = "open " + url
+	m.cc.setThinking("open " + url)
+	m.cc.convView.GotoBottom()
+	m.taskMgr.AddOnce("open " + url)
 }
 
 // ─── Topic Commands ───

@@ -15,13 +15,25 @@ type Summarizer struct {
 	client   *http.Client
 	model    string
 	endpoint string
+	options  map[string]any
 }
 
-func New(model, endpoint string) *Summarizer {
+func New(endpoint string) *Summarizer {
 	return &Summarizer{
-		client:   &http.Client{Timeout: 30 * time.Second},
-		model:    model,
+		client:   &http.Client{Timeout: 4 * time.Minute},
+		model:    "",
 		endpoint: endpoint,
+	}
+}
+
+func (s *Summarizer) SetModel(model string) {
+	s.model = model
+}
+
+func (s *Summarizer) SetContextSize(size int) {
+	s.options = map[string]any{
+		"num_ctx":     size,
+		"num_predict": 1024,
 	}
 }
 
@@ -29,9 +41,10 @@ func (s *Summarizer) Summarize(rawData, pipeline, userInput, conversationContext
 	p := prompt.SynthesisPrompt(rawData, pipeline, userInput, conversationContext)
 
 	req := map[string]any{
-		"model":  s.model,
-		"prompt": p,
-		"stream": false,
+		"model":   s.model,
+		"prompt":  p,
+		"stream":  false,
+		"options": s.options,
 	}
 
 	data, _ := json.Marshal(req)

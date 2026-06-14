@@ -181,6 +181,15 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 		reply = "Action completed"
 	}
 
+	if pipelineName == "search_inline" || pipelineName == "browse" {
+		m.lastSearchURLs = extractURLs(raw + "\n" + synth)
+		urls := m.lastSearchURLs
+		if len(urls) > 0 {
+			reply += fmtURLs(urls)
+			m.logger.Info("SEARCH", fmt.Sprintf("Extracted %d URLs", len(urls)))
+		}
+	}
+
 	if raw != "" {
 		m.logger.Info("EXECUTOR", fmt.Sprintf("Raw output:\n%s", raw))
 	}
