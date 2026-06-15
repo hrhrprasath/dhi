@@ -71,6 +71,7 @@ type Model struct {
 	tracker  trackerPanel
 	todo     todoPanel
 	schedule schedulePanel
+	welcome  welcomePanel
 }
 
 func NewModel(logger *services.Logger, tm *task.Manager,
@@ -189,6 +190,12 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 		schedule: schedulePanel{
 			view: sv,
 		},
+		welcome: welcomePanel{
+			show:      true,
+			status:    "CHECKING",
+			startTime: time.Now(),
+			minShow:   2 * time.Second,
+		},
 	}
 
 	m.help.content = buildHelpContent(m.settingsMgr.Endpoint())
@@ -301,6 +308,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.system.routerStatus = "OFFLINE"
 		}
+		if m.welcome.show && !m.welcome.checked {
+			m.welcome.checked = true
+			if msg.online {
+				m.welcome.status = "READY"
+			} else {
+				m.welcome.status = "OFFLINE"
+			}
+			if time.Since(m.welcome.startTime) >= m.welcome.minShow {
+				m.welcome.show = false
+			}
+		}
 		return m, m.eventPoller()
 
 	case logMsg:
@@ -354,6 +372,9 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) render() string {
+	if m.welcome.show {
+		return m.welcome.render(m.width, m.height)
+	}
 	rw := m.rightWidth()
 
 	leftPanel := lipgloss.JoinVertical(lipgloss.Top,
@@ -409,6 +430,10 @@ func (m *Model) rightWidth() int {
 // ─── Keyboard Handling ───
 
 func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
+	if m.welcome.show {
+		m.welcome.show = false
+		return m.cc.textInput.Focus()
+	}
 	switch {
 	case msg.Code == 'c' && msg.Mod == tea.ModCtrl:
 		return tea.Quit
