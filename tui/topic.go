@@ -51,7 +51,7 @@ func (t *topicPanel) renderRecent(all []topic.Topic, cur *topic.Topic, focused b
 	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /topic browse all"))
 
 	contentLines := strings.Count(sb.String(), "\n") + 1
-	used := 7 + 9 + 9
+	used := 7 + 9 + 9 + 5
 	available := height - used - 2
 	if fill := available - contentLines; fill > 0 {
 		sb.WriteString(strings.Repeat("\n", fill))

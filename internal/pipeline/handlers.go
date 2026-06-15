@@ -45,6 +45,14 @@ func (h *Handlers) handleTodo(action, text string) string {
 			return "✅ Marked todo as done: " + text
 		}
 		return "Todo not found: " + text
+	case "undone", "uncomplete", "reset":
+		if text == "" {
+			return "Missing todo id to mark not done"
+		}
+		if h.todoMgr.Uncomplete(text) {
+			return "✅ Marked todo as not done: " + text
+		}
+		return "Todo not found: " + text
 	default:
 		return h.todoMgr.List(false)
 	}

@@ -163,7 +163,16 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 		var raw map[string]any
 		if json.Unmarshal(intentResult.Params, &raw) == nil {
 			for k, v := range raw {
-				params[k] = fmt.Sprintf("%v", v)
+				switch val := v.(type) {
+				case string:
+					params[k] = val
+				case map[string]any, []any:
+					if b, err := json.Marshal(val); err == nil {
+						params[k] = string(b)
+					}
+				default:
+					params[k] = fmt.Sprintf("%v", val)
+				}
 			}
 		}
 	}

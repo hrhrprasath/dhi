@@ -71,6 +71,18 @@ func (m *Manager) Complete(id string) bool {
 	return false
 }
 
+func (m *Manager) Uncomplete(id string) bool {
+	l := m.load()
+	for i := range l.Items {
+		if l.Items[i].ID == id || strings.HasPrefix(l.Items[i].ID, id) {
+			l.Items[i].Done = false
+			m.save(&l)
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Manager) List(includeDone bool) string {
 	l := m.load()
 	if len(l.Items) == 0 {
@@ -91,6 +103,36 @@ func (m *Manager) List(includeDone bool) string {
 		return "No pending todos."
 	}
 	return sb.String()
+}
+
+func (m *Manager) ListItems() []Item {
+	l := m.load()
+	out := make([]Item, len(l.Items))
+	copy(out, l.Items)
+	return out
+}
+
+func (m *Manager) Delete(id string) bool {
+	l := m.load()
+	for i := range l.Items {
+		if l.Items[i].ID == id {
+			l.Items = append(l.Items[:i], l.Items[i+1:]...)
+			m.save(&l)
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Manager) ActiveCount() int {
+	l := m.load()
+	n := 0
+	for _, item := range l.Items {
+		if !item.Done {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *Manager) FormatForPrompt() string {

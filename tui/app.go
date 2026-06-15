@@ -56,8 +56,8 @@ type Model struct {
 	focused  focusPanel
 	focusCmd tea.Cmd
 
-	lastInput     string
-	lastIntent    *intent.ParsedIntent
+	lastInput      string
+	lastIntent     *intent.ParsedIntent
 	lastSearchURLs []string
 
 	dhiOS    dhiOS
@@ -68,6 +68,9 @@ type Model struct {
 	model    modelPanel
 	help     helpPanel
 	log      logPanel
+	tracker  trackerPanel
+	todo     todoPanel
+	schedule schedulePanel
 }
 
 func NewModel(logger *services.Logger, tm *task.Manager,
@@ -86,6 +89,8 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 	pv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(6))
 	tv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
 	mv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(5))
+	tv2 := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
+	sv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
 	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(10))
 	lv.SoftWrap = true
 	lv.SetContent("No logs yet...")
@@ -178,6 +183,12 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 			view:    lv,
 			entries: []string{"[SYSTEM][INFO] DHI Harness initializing..."},
 		},
+		todo: todoPanel{
+			view: tv2,
+		},
+		schedule: schedulePanel{
+			view: sv,
+		},
 	}
 
 	m.help.content = buildHelpContent(m.settingsMgr.Endpoint())
@@ -268,6 +279,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.model.view.SetHeight(ch)
 		m.help.view.SetWidth(vw - 2)
 		m.help.view.SetHeight(ch)
+		m.todo.view.SetWidth(vw - 2)
+		m.todo.view.SetHeight(ch + 1)
+		m.schedule.view.SetWidth(vw - 2)
+		m.schedule.view.SetHeight(ch + 1)
 		m.cc.textInput.SetWidth(rw - 24)
 		return m, m.eventPoller()
 
@@ -345,6 +360,7 @@ func (m *Model) render() string {
 		m.dhiOS.render(),
 		m.system.render(),
 		m.pipeline.render(),
+		m.tracker.render(m.todoMgr, m.taskMgr),
 		m.topic.renderRecent(m.topicMgr.ListTopics(), m.topicMgr.CurrentTopic(), m.focused == focusTopics, m.height),
 	)
 
@@ -358,6 +374,10 @@ func (m *Model) render() string {
 		mainBlock = m.topic.renderPopup(rw, m.topicMgr.CurrentTopic())
 	case m.model.popupOpen:
 		mainBlock = m.model.renderPopup(rw, m.settingsMgr.CurrentModel())
+	case m.todo.popupOpen:
+		mainBlock = m.todo.renderPopup(rw)
+	case m.schedule.popupOpen:
+		mainBlock = m.schedule.renderPopup(rw)
 	default:
 		topicTitle := ""
 		if cur := m.topicMgr.CurrentTopic(); cur != nil {
@@ -415,6 +435,31 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 
 	case msg.Code == tea.KeyPgDown:
 		return m.handlePageDown()
+
+	case msg.Code == tea.KeyLeft:
+		return m.handleArrowLeft()
+
+	case msg.Code == tea.KeyRight:
+		return m.handleArrowRight()
+	}
+
+	if m.todo.popupOpen || m.schedule.popupOpen {
+		switch {
+		case msg.Code == 'r' || msg.Code == 'R':
+			if m.todo.popupOpen {
+				return m.todoRemoveSelected()
+			}
+			if m.schedule.popupOpen {
+				return m.scheduleRemoveSelected()
+			}
+		case msg.Code == 'd' || msg.Code == 'D':
+			if m.todo.popupOpen {
+				return m.todoDoneSelected()
+			}
+			if m.schedule.popupOpen {
+				return m.scheduleResetSelected()
+			}
+		}
 	}
 
 	if m.focused == focusInput {
@@ -425,7 +470,7 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 			oldFilter := m.topic.filter
 			m.topic.filter = m.cc.textInput.Value()
 			if m.topic.filter != oldFilter {
-	m.topic.filterTopics(m.topicMgr.ListTopics())
+				m.topic.filterTopics(m.topicMgr.ListTopics())
 				m.topic.selIdx = 0
 			}
 		}
@@ -444,6 +489,14 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) handleEscape() tea.Cmd {
+	if m.todo.popupOpen {
+		m.toggleTodoPopup()
+		return nil
+	}
+	if m.schedule.popupOpen {
+		m.toggleSchedulePopup()
+		return nil
+	}
 	if m.topic.popupOpen {
 		m.toggleTopicPopup()
 		return nil
@@ -584,6 +637,14 @@ func (m *Model) handleEnter() tea.Cmd {
 			m.handleResumeTopic()
 			return nil
 		}
+		if input == "/todo" {
+			m.toggleTodoPopup()
+			return nil
+		}
+		if input == "/schedule" {
+			m.toggleSchedulePopup()
+			return nil
+		}
 		if input == "/model" || input == "/models" {
 			m.toggleModelPopup()
 			return nil
@@ -620,6 +681,18 @@ func (m *Model) handleEnter() tea.Cmd {
 }
 
 func (m *Model) handleArrowUp() tea.Cmd {
+	if m.todo.popupOpen {
+		if m.todo.selIdx > 0 {
+			m.todo.selIdx--
+		}
+		return nil
+	}
+	if m.schedule.popupOpen {
+		if m.schedule.selIdx > 0 {
+			m.schedule.selIdx--
+		}
+		return nil
+	}
 	if m.topic.popupOpen {
 		if m.topic.selIdx > 0 {
 			m.topic.selIdx--
@@ -651,6 +724,18 @@ func (m *Model) handleArrowUp() tea.Cmd {
 }
 
 func (m *Model) handleArrowDown() tea.Cmd {
+	if m.todo.popupOpen {
+		if m.todo.selIdx < len(m.todo.items)-1 {
+			m.todo.selIdx++
+		}
+		return nil
+	}
+	if m.schedule.popupOpen {
+		if m.schedule.selIdx < len(m.schedule.items)-1 {
+			m.schedule.selIdx++
+		}
+		return nil
+	}
 	if m.topic.popupOpen {
 		if m.topic.selIdx < len(m.topic.filtered)-1 {
 			m.topic.selIdx++
@@ -758,7 +843,7 @@ func (m *Model) handleMouseClick(mouse tea.Mouse) tea.Cmd {
 var slashCommands = []string{
 	"/good", "/bad", "/log", "/logs", "/quit",
 	"/new", "/fork", "/resume", "/topic", "/topics",
-	"/model", "/models", "/help", "/?",
+	"/model", "/models", "/todo", "/schedule", "/help", "/?",
 }
 
 func (m *Model) computeSlashMatches(prefix string) {
@@ -1044,4 +1129,139 @@ func (m *Model) selectCurrentTopic() {
 	}
 	m.toggleTopicPopup()
 	m.handleSwitchTopic(m.topic.filtered[idx].ID)
+}
+
+// ─── Tracker Popup Toggles ───
+
+func (m *Model) toggleTodoPopup() {
+	m.todo.popupOpen = !m.todo.popupOpen
+	if m.todo.popupOpen {
+		m.todo.tabIdx = 0
+		m.todo.selIdx = 0
+		m.todo.loadItems(m.todoMgr)
+		m.todo.view.GotoBottom()
+		m.focused = focusLogs
+		m.cc.textInput.Blur()
+	} else {
+		m.focused = focusInput
+		m.cc.textInput.Focus()
+	}
+}
+
+func (m *Model) toggleSchedulePopup() {
+	m.schedule.popupOpen = !m.schedule.popupOpen
+	if m.schedule.popupOpen {
+		m.schedule.tabIdx = 0
+		m.schedule.selIdx = 0
+		m.schedule.loadItems(m.taskMgr)
+		m.schedule.view.GotoBottom()
+		m.focused = focusLogs
+		m.cc.textInput.Blur()
+	} else {
+		m.focused = focusInput
+		m.cc.textInput.Focus()
+	}
+}
+
+func (m *Model) todoRemoveSelected() tea.Cmd {
+	if m.todo.selIdx < 0 || m.todo.selIdx >= len(m.todo.items) {
+		return nil
+	}
+	m.todoMgr.Delete(m.todo.items[m.todo.selIdx].ID)
+	m.todo.loadItems(m.todoMgr)
+	if m.todo.selIdx >= len(m.todo.items) && m.todo.selIdx > 0 {
+		m.todo.selIdx--
+	}
+	return nil
+}
+
+func (m *Model) todoDoneSelected() tea.Cmd {
+	if m.todo.selIdx < 0 || m.todo.selIdx >= len(m.todo.items) {
+		return nil
+	}
+	id := m.todo.items[m.todo.selIdx].ID
+	if m.todo.tabIdx == 0 {
+		m.todoMgr.Complete(id)
+	} else {
+		m.todoMgr.Uncomplete(id)
+	}
+	m.todo.loadItems(m.todoMgr)
+	if m.todo.selIdx >= len(m.todo.items) && m.todo.selIdx > 0 {
+		m.todo.selIdx--
+	}
+	return nil
+}
+
+func (m *Model) scheduleRemoveSelected() tea.Cmd {
+	if m.schedule.selIdx < 0 || m.schedule.selIdx >= len(m.schedule.items) {
+		return nil
+	}
+	m.taskMgr.Delete(m.schedule.items[m.schedule.selIdx].ID)
+	m.schedule.loadItems(m.taskMgr)
+	if m.schedule.selIdx >= len(m.schedule.items) && m.schedule.selIdx > 0 {
+		m.schedule.selIdx--
+	}
+	return nil
+}
+
+func (m *Model) scheduleResetSelected() tea.Cmd {
+	if m.schedule.selIdx < 0 || m.schedule.selIdx >= len(m.schedule.items) {
+		return nil
+	}
+	if m.schedule.tabIdx == 0 {
+		return nil
+	}
+	id := m.schedule.items[m.schedule.selIdx].ID
+	_ = m.taskMgr.Update(id, func(t *task.Task) {
+		t.Status = task.StatusWaiting
+	})
+	m.schedule.loadItems(m.taskMgr)
+	if m.schedule.selIdx >= len(m.schedule.items) && m.schedule.selIdx > 0 {
+		m.schedule.selIdx--
+	}
+	return nil
+}
+
+func (m *Model) handleArrowLeft() tea.Cmd {
+	if m.todo.popupOpen {
+		if m.todo.tabIdx > 0 {
+			m.todo.tabIdx--
+			m.todo.selIdx = 0
+			m.todo.loadItems(m.todoMgr)
+			m.todo.view.GotoBottom()
+		}
+		return nil
+	}
+	if m.schedule.popupOpen {
+		if m.schedule.tabIdx > 0 {
+			m.schedule.tabIdx--
+			m.schedule.selIdx = 0
+			m.schedule.loadItems(m.taskMgr)
+			m.schedule.view.GotoBottom()
+		}
+		return nil
+	}
+	return nil
+}
+
+func (m *Model) handleArrowRight() tea.Cmd {
+	if m.todo.popupOpen {
+		if m.todo.tabIdx < 1 {
+			m.todo.tabIdx++
+			m.todo.selIdx = 0
+			m.todo.loadItems(m.todoMgr)
+			m.todo.view.GotoBottom()
+		}
+		return nil
+	}
+	if m.schedule.popupOpen {
+		if m.schedule.tabIdx < 1 {
+			m.schedule.tabIdx++
+			m.schedule.selIdx = 0
+			m.schedule.loadItems(m.taskMgr)
+			m.schedule.view.GotoBottom()
+		}
+		return nil
+	}
+	return nil
 }
