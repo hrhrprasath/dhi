@@ -29,14 +29,14 @@ func (hp *helpPanel) renderPopup(w int) string {
 	)
 }
 
-func buildHelpContent(endpoint string) string {
+func buildHelpContent() string {
 	var sb strings.Builder
 
 	sb.WriteString(header("Commands"))
 	sb.WriteString(cmd("/help", "/?", ":h", "Show this help screen"))
 	sb.WriteString(cmd("/quit", "/q", ":q", "Quit the application"))
 	sb.WriteString(cmd("/topic", "/topics", "", "Browse and switch conversation topics"))
-	sb.WriteString(cmd("/model", "/models", "", "Browse and switch Ollama models"))
+	sb.WriteString(cmd("/model", "/models", "", "Browse and switch AI models"))
 	sb.WriteString(cmd("/log", "/logs", "/l", "View application logs"))
 	sb.WriteString(cmd("/new", "", "", "Create a new conversation topic"))
 	sb.WriteString(cmd("/fork", "", "", "Fork the current topic"))
@@ -53,9 +53,10 @@ func buildHelpContent(endpoint string) string {
 	sb.WriteString("ESC        Close popup / cancel\n")
 	sb.WriteString("\n")
 
-	sb.WriteString(header("Environment"))
-	sb.WriteString(fmt.Sprintf("DHI_OLLAMA_ENDPOINT=%s\n", endpoint))
-	sb.WriteString("  Ollama server URL (default: http://localhost:11434)\n")
+	sb.WriteString(header("Configuration"))
+	sb.WriteString("See config/config.yaml for AI provider settings\n")
+	sb.WriteString("  provider, base_url, api_key, model, max_tokens, temperature\n")
+	sb.WriteString("  Supports: ollama, groq, openrouter, openai, vllm, nim, custom\n")
 
 	return sb.String()
 }

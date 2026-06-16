@@ -1,28 +1,25 @@
 package summarizer
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
+	"strings"
 
+	"dhi_harness/internal/ai"
 	"dhi_harness/internal/prompt"
 )
 
 type Summarizer struct {
-	client   *http.Client
-	model    string
-	endpoint string
-	options  map[string]any
+	client *ai.Client
+	model  string
+	config ai.Config
 }
 
-func New(endpoint string) *Summarizer {
+func New(cfg ai.Config) *Summarizer {
 	return &Summarizer{
-		client:   &http.Client{Timeout: 4 * time.Minute},
-		model:    "",
-		endpoint: endpoint,
+		client: ai.NewClient(cfg),
+		model:  cfg.Model,
+		config: cfg,
 	}
 }
 
@@ -30,45 +27,23 @@ func (s *Summarizer) SetModel(model string) {
 	s.model = model
 }
 
-func (s *Summarizer) SetContextSize(size int) {
-	s.options = map[string]any{
-		"num_ctx":     size,
-		"num_predict": 1024,
-	}
-}
-
 func (s *Summarizer) Summarize(rawData, pipeline, userInput, conversationContext string) string {
 	p := prompt.SynthesisPrompt(rawData, pipeline, userInput, conversationContext)
 
-	req := map[string]any{
-		"model":   s.model,
-		"prompt":  p,
-		"stream":  false,
-		"options": s.options,
+	messages := []ai.ChatMessage{
+		{Role: "system", Content: p},
+		{Role: "user", Content: userInput},
 	}
 
-	data, _ := json.Marshal(req)
-	resp, err := s.client.Post(
-		fmt.Sprintf("%s/api/generate", s.endpoint),
-		"application/json",
-		bytes.NewReader(data),
-	)
+	resp, err := s.client.Chat(context.Background(), ai.ChatRequest{
+		Model:       s.model,
+		Messages:    messages,
+		MaxTokens:   s.config.MaxTokens,
+		Temperature: s.config.Temperature,
+	})
 	if err != nil {
 		return fmt.Sprintf("[Summary unavailable - %s]", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Sprintf("[Summary unavailable - API returned status %d]", resp.StatusCode)
-	}
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	body, _ := io.ReadAll(resp.Body)
-	if json.Unmarshal(body, &ollamaResp) != nil {
-		return "[Summary unavailable - failed to parse response]"
-	}
-
-	return ollamaResp.Response
+	return strings.TrimSpace(resp)
 }

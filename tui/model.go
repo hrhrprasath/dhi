@@ -59,7 +59,7 @@ func (mp *modelPanel) renderRecent(cur *settings.ModelInfo, focused bool, height
 	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /model browse all"))
 
 	contentLines := strings.Count(sb.String(), "\n") + 1
-	used := 7 + 9 + 9 + 4 + 6
+	used := 7 + 9 + 9 + 4 + 7
 	available := height - used - 2
 	if fill := available - contentLines; fill > 0 {
 		sb.WriteString(strings.Repeat("\n", fill))

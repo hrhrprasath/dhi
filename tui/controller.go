@@ -123,23 +123,43 @@ func (m *Model) handleConversation(t *task.Task, summaryText string, intentResul
 	if cur := m.topicMgr.CurrentTopic(); cur != nil {
 		topicTitle = cur.Title
 	}
-	response, err := m.router.Chat(t.RawInput, summaryText, searchResults, topicTitle)
-	if err != nil {
-		m.logger.Error("CONSUMER", fmt.Sprintf("Chat failed: %s", err))
-		m.taskMgr.Update(t.ID, func(upd *task.Task) {
-			upd.Status = task.StatusFailed
-		})
-		return
-	}
 
-	response = cleanResponse(response, t.RawInput)
+	tokenCh, errCh := m.router.ChatStream(t.RawInput, summaryText, searchResults, topicTitle)
+
+	var fullResponse strings.Builder
+	streamDone := make(chan struct{}, 1)
+
+	go func() {
+		defer close(streamDone)
+		for {
+			select {
+			case token, ok := <-tokenCh:
+				if !ok {
+					return
+				}
+				fullResponse.WriteString(token)
+				m.events <- convTokenMsg{input: t.RawInput, token: token}
+			case err, ok := <-errCh:
+				if ok && err != nil {
+					m.logger.Error("CONSUMER", fmt.Sprintf("Chat stream error: %s", err))
+					return
+				}
+			}
+		}
+	}()
+
+	<-streamDone
+
+	response := cleanResponse(fullResponse.String(), t.RawInput)
 	m.logger.Info("DHI", response)
+
+	if fullResponse.Len() > 0 {
+		m.events <- convCompleteMsg{input: t.RawInput, response: response}
+	}
 
 	if cur := m.topicMgr.CurrentTopic(); cur != nil {
 		m.topicMgr.AppendTurn(cur.ID, t.RawInput, response)
 	}
-
-	m.events <- convMsg{input: t.RawInput, response: response}
 
 	if m.feedback != nil {
 		m.feedback.RecordConversation(t.RawInput)

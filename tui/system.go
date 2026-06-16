@@ -37,7 +37,7 @@ func (s *systemPanel) render() string {
 		s.ramProgress.ViewAs(ramPct),
 		gpuLine,
 		lipgloss.NewStyle().Foreground(statusColor).Render(statusDot),
-		lipgloss.NewStyle().Foreground(statusColor).Render("Ollama "+s.routerStatus),
+		lipgloss.NewStyle().Foreground(statusColor).Render("AI "+s.routerStatus),
 	)
 
 	return borderStyle.Width(28).Render(

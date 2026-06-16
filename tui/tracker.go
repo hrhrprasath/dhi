@@ -3,7 +3,9 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"dhi_harness/internal/rss"
 	"dhi_harness/internal/task"
 	"dhi_harness/internal/todo"
 
@@ -15,15 +17,17 @@ import (
 
 type trackerPanel struct{}
 
-func (t *trackerPanel) render(todoMgr *todo.Manager, taskMgr *task.Manager) string {
+func (t *trackerPanel) render(todoMgr *todo.Manager, taskMgr *task.Manager, rssMgr *rss.Manager) string {
 	var sb strings.Builder
 
 	activeTodos := todoMgr.ActiveCount()
 	activeScheds := taskMgr.CountByStatus(task.StatusWaiting)
+	rssCount := rssMgr.EntryCount()
 
-	sb.WriteString(fmt.Sprintf(" ☐ Todos:  %d pending\n", activeTodos))
-	sb.WriteString(fmt.Sprintf(" ☐ Sched:  %d upcoming\n", activeScheds))
-	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /todo  /schedule"))
+	sb.WriteString(fmt.Sprintf("   Todos:  %d pending\n", activeTodos))
+	sb.WriteString(fmt.Sprintf("   Sched:  %d upcoming\n", activeScheds))
+	sb.WriteString(fmt.Sprintf("   RSS:    %d entries\n", rssCount))
+	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /todo  /schedule  /rss"))
 
 	return borderStyle.Width(28).Render(
 		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" TRACKER ") + "\n" + sb.String(),
@@ -31,7 +35,7 @@ func (t *trackerPanel) render(todoMgr *todo.Manager, taskMgr *task.Manager) stri
 }
 
 func (t *trackerPanel) height() int {
-	return 5
+	return 6
 }
 
 // ─── Todo Panel (popup) ───
@@ -209,4 +213,263 @@ func (sp *schedulePanel) renderPopup(w int) string {
 			lipgloss.NewStyle().Foreground(accentColor).Render(tabs) + "\n" +
 			sp.view.View() + "\n" + help,
 	)
+}
+
+// ─── RSS Panel (popup) ───
+
+type rawItem struct {
+	isSource bool
+	source   rss.FeedSource
+	entry    rss.FeedEntry
+}
+
+type rssPanel struct {
+	feedSources   []rss.FeedSource
+	feedEntries   []rss.FeedEntry
+	rawItems      []rawItem
+	bookmarkItems []rss.FeedEntry
+	aiSummary     string
+	selIdx        int
+	tabIdx        int
+	popupOpen     bool
+	view          viewport.Model
+	loading       bool
+	loaded        bool
+	lastFetch     time.Time
+}
+
+func (rp *rssPanel) loadData(mgr *rss.Manager) {
+	rp.feedSources = mgr.ListSources()
+	rp.feedEntries = mgr.ListEntries("")
+
+	rp.rawItems = nil
+	for _, src := range rp.feedSources {
+		entries := mgr.ListEntries(src.ID)
+		rp.rawItems = append(rp.rawItems, rawItem{isSource: true, source: src})
+		for _, entry := range entries {
+			rp.rawItems = append(rp.rawItems, rawItem{isSource: false, entry: entry})
+		}
+	}
+
+	rp.bookmarkItems = mgr.GetBookmarks()
+
+	maxIdx := 0
+	switch rp.tabIdx {
+	case 1:
+		maxIdx = len(rp.rawItems) - 1
+	case 2:
+		maxIdx = len(rp.bookmarkItems) - 1
+	}
+	if rp.selIdx > maxIdx && maxIdx >= 0 {
+		rp.selIdx = maxIdx
+	} else if maxIdx < 0 {
+		rp.selIdx = 0
+	}
+}
+
+func (rp *rssPanel) renderPopup(w int) string {
+	tabLabels := []string{"AI CURATED", "RAW", "BOOKMARKS"}
+	var tabs strings.Builder
+	for i, label := range tabLabels {
+		tabStyle := lipgloss.NewStyle().Foreground(dimColor)
+		if i == rp.tabIdx {
+			tabStyle = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+			tabs.WriteString(tabStyle.Render(fmt.Sprintf(" [ %s ] ", label)))
+		} else {
+			tabs.WriteString(tabStyle.Render(fmt.Sprintf(" %s ", label)))
+		}
+	}
+
+	var helpTxt string
+	switch rp.tabIdx {
+	case 0:
+		helpTxt = " ↑↓ nav · ←→ tab · Enter open · S refresh · ESC close "
+	case 1:
+		helpTxt = " ↑↓ nav · ←→ tab · Enter open · B bookmark · R remove source · ESC close "
+	case 2:
+		helpTxt = " ↑↓ nav · ←→ tab · Enter open · B unbookmark · ESC close "
+	}
+	help := lipgloss.NewStyle().Foreground(dimColor).Render(helpTxt)
+
+	var content string
+	switch rp.tabIdx {
+	case 0:
+		content = rp.renderAITab()
+	case 1:
+		content = rp.renderRawTab()
+	case 2:
+		content = rp.renderBookmarkTab()
+	}
+
+	if len(rp.rawItems) > 0 && rp.tabIdx > 0 {
+		var itemLen int
+		if rp.tabIdx == 1 {
+			itemLen = len(rp.rawItems)
+		} else {
+			itemLen = len(rp.bookmarkItems)
+		}
+		if itemLen > 0 {
+			visLines := rp.view.Height()
+			yoff := rp.view.YOffset()
+			selLine := rp.selIdx * 2
+			if selLine > yoff+visLines-3 {
+				rp.view.ScrollDown(selLine - (yoff + visLines) + 3)
+			} else if selLine < yoff {
+				rp.view.ScrollUp(yoff - selLine)
+			}
+		}
+	}
+
+	rp.view.SetContent(content)
+
+	return focusedBorderStyle.Width(w).Render(
+		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" RSS FEEDS ") + "\n" +
+			tabs.String() + "\n" +
+			rp.view.View() + "\n" + help,
+	)
+}
+
+func (rp *rssPanel) renderAITab() string {
+	if rp.loading {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frame := frames[int(time.Now().UnixMilli()/200)%len(frames)]
+		return lipgloss.NewStyle().Foreground(dimColor).Render(frame+" Fetching feeds...") + "\n"
+	}
+	if !rp.loaded {
+		return lipgloss.NewStyle().Foreground(dimColor).Render("Open the RSS popup to fetch feeds.") + "\n"
+	}
+	if rp.aiSummary == "" {
+		return lipgloss.NewStyle().Foreground(dimColor).Render("Generating AI summary...") + "\n"
+	}
+	if len(rp.feedEntries) == 0 {
+		return lipgloss.NewStyle().Foreground(dimColor).Render("No entries. Add feeds with /rss add <url>") + "\n"
+	}
+
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Foreground(accentColor).Bold(true).Render("AI Curation\n\n"))
+
+	lines := strings.Split(rp.aiSummary, "\n")
+	for _, line := range lines {
+		sb.WriteString(line + "\n")
+	}
+	return sb.String()
+}
+
+func (rp *rssPanel) renderRawTab() string {
+	if len(rp.rawItems) == 0 {
+		return lipgloss.NewStyle().Foreground(dimColor).Render("No feeds. Add via /rss add <url> or OPML import.") + "\n"
+	}
+	var sb strings.Builder
+	n := 0
+	for _, item := range rp.rawItems {
+		selIdx := n
+		n++
+
+		mark := "  "
+		style := lipgloss.NewStyle().Foreground(dimColor)
+		if selIdx == rp.selIdx {
+			mark = "▸ "
+			style = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+		}
+
+		if item.isSource {
+			entryCount := 0
+			for _, ri := range rp.rawItems {
+				if !ri.isSource && ri.entry.SourceID == item.source.ID {
+					entryCount++
+				}
+			}
+			sb.WriteString(style.Render(fmt.Sprintf("%s▶ %s (%d)", mark, item.source.Title, entryCount)) + "\n")
+		} else {
+			entry := item.entry
+			bookmark := " "
+			if entry.IsBookmark {
+				bookmark = "🔖"
+			}
+			title := entry.Title
+			if len(title) > 50 {
+				title = title[:47] + "..."
+			}
+			timeAgo := formatTimeAgo(entry.PublishedAt)
+			link := shortenURL(entry.Link)
+
+			sb.WriteString(style.Render(fmt.Sprintf("   %s%s %s", mark, bookmark, title)) + "\n")
+			linkStyle := lipgloss.NewStyle().Foreground(dimColor)
+			if selIdx == rp.selIdx {
+				linkStyle = lipgloss.NewStyle().Foreground(accentColor)
+			}
+			sb.WriteString(linkStyle.Render(fmt.Sprintf("      %s   %s", hyperlink(entry.Link, link), timeAgo)) + "\n")
+		}
+	}
+	return sb.String()
+}
+
+func (rp *rssPanel) renderBookmarkTab() string {
+	if len(rp.bookmarkItems) == 0 {
+		return lipgloss.NewStyle().Foreground(dimColor).Render("No bookmarks. Press B on an entry to bookmark.") + "\n"
+	}
+	var sb strings.Builder
+	for i, entry := range rp.bookmarkItems {
+		mark := "  "
+		style := lipgloss.NewStyle().Foreground(dimColor)
+		if i == rp.selIdx {
+			mark = "▸ "
+			style = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+		}
+
+		title := entry.Title
+		if len(title) > 50 {
+			title = title[:47] + "..."
+		}
+		sourceName := ""
+		for _, src := range rp.feedSources {
+			if src.ID == entry.SourceID {
+				sourceName = src.Title
+				break
+			}
+		}
+		timeAgo := formatTimeAgo(entry.PublishedAt)
+		link := shortenURL(entry.Link)
+
+		sb.WriteString(style.Render(fmt.Sprintf("  %s%s", mark, title)) + "\n")
+		sourceStyle := lipgloss.NewStyle().Foreground(dimColor)
+		if i == rp.selIdx {
+			sourceStyle = lipgloss.NewStyle().Foreground(accentColor)
+		}
+		sb.WriteString(sourceStyle.Render(fmt.Sprintf("     %s  (%s)  %s", hyperlink(entry.Link, link), sourceName, timeAgo)) + "\n")
+	}
+	return sb.String()
+}
+
+func formatTimeAgo(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	if d < time.Minute {
+		return "now"
+	}
+	if d < time.Hour {
+		m := int(d.Minutes())
+		return fmt.Sprintf("%dm", m)
+	}
+	if d < 24*time.Hour {
+		h := int(d.Hours())
+		return fmt.Sprintf("%dh", h)
+	}
+	if d < 7*24*time.Hour {
+		d2 := int(d.Hours() / 24)
+		return fmt.Sprintf("%dd", d2)
+	}
+	return t.Format("Jan 2")
+}
+
+func shortenURL(url string) string {
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "www.")
+	if len(url) > 45 {
+		url = url[:42] + "..."
+	}
+	return url
 }

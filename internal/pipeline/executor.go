@@ -37,10 +37,6 @@ func (e *Executor) SetModel(name string) {
 	e.summarizer.SetModel(name)
 }
 
-func (e *Executor) SetContextSize(size int) {
-	e.summarizer.SetContextSize(size)
-}
-
 func (e *Executor) FindAndExecute(event string, params map[string]string, userInput, convCtx string) (raw string, synthesized string) {
 	pipelineName := e.eventToPipeline(event)
 	pl := e.manager.GetPipeline(pipelineName)
@@ -183,6 +179,10 @@ func (e *Executor) interpolate(template string, params map[string]string) string
 		result = strings.ReplaceAll(result, "{"+k+"}", v)
 	}
 	return result
+}
+
+func (e *Executor) Summarizer() *summarizer.Summarizer {
+	return e.summarizer
 }
 
 func (e *Executor) synthesizeOutput(raw, pipeline, userInput, convCtx string) string {

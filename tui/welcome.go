@@ -43,7 +43,7 @@ func (w *welcomePanel) render(width, height int) string {
 		statusStyle = lipgloss.NewStyle().Foreground(yellowColor)
 	}
 
-	statusText := fmt.Sprintf("%s Ollama %s", statusDot, w.status)
+	statusText := fmt.Sprintf("%s AI %s", statusDot, w.status)
 
 	var lines []string
 	for _, l := range art {

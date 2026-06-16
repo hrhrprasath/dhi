@@ -1,16 +1,15 @@
 package intent
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"dhi_harness/internal/ai"
 	"dhi_harness/internal/prompt"
 	"dhi_harness/internal/services"
 )
@@ -29,48 +28,26 @@ type WeightProvider interface {
 	CalibrateWithEvent(rawConfidence float64, event string) float64
 }
 
-type intentRequest struct {
-	Model   string          `json:"model"`
-	Prompt  string          `json:"prompt"`
-	Stream  bool            `json:"stream"`
-	Format  json.RawMessage `json:"format,omitempty"`
-	Options map[string]any  `json:"options,omitempty"`
-}
-
-type intentResponse struct {
-	Model    string `json:"model"`
-	Response string `json:"response"`
-	Done     bool   `json:"done"`
-}
-
 type Router struct {
-	client   *http.Client
-	model    string
-	endpoint string
-	options  map[string]any
-	logger   *services.Logger
-	weights  WeightProvider
+	client  *ai.Client
+	model   string
+	config  ai.Config
+	logger  *services.Logger
+	weights WeightProvider
 }
 
-func NewRouter(endpoint string, logger *services.Logger) *Router {
-	logger.Info("ROUTER", "Intent Router initialized")
+func NewRouter(cfg ai.Config, logger *services.Logger) *Router {
+	logger.Info("ROUTER", fmt.Sprintf("AI Router initialized (provider: %s)", cfg.Provider))
 	return &Router{
-		client:   &http.Client{Timeout: 4 * time.Minute},
-		model:    "",
-		endpoint: endpoint,
-		logger:   logger,
+		client: ai.NewClient(cfg),
+		model:  cfg.Model,
+		config: cfg,
+		logger: logger,
 	}
 }
 
 func (r *Router) SetModel(model string) {
 	r.model = model
-}
-
-func (r *Router) SetContextSize(size int) {
-	r.options = map[string]any{
-		"num_ctx":     size,
-		"num_predict": 1024,
-	}
 }
 
 func (r *Router) SetWeightProvider(wp WeightProvider) {
@@ -110,40 +87,28 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 		keywordBlock = r.weights.BuildKeywordBlock(userInput, pipelineKeywords)
 	}
 
-	p := prompt.ClassifyPrompt(userInput, summaryText, topicTitle, calBlock, keywordBlock, weightLines)
-	r.savePrompt(p)
+	systemPrompt := prompt.ClassifyPrompt(userInput, summaryText, topicTitle, calBlock, keywordBlock, weightLines)
 
-	req := intentRequest{
-		Model:   r.model,
-		Prompt:  p,
-		Stream:  false,
-		Format:  json.RawMessage(`{"type": "object"}`),
-		Options: r.options,
+	messages := []ai.ChatMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userInput},
 	}
 
-	resp, err := r.client.Post(
-		fmt.Sprintf("%s/api/generate", r.endpoint),
-		"application/json",
-		newReader(req),
-	)
+	resp, err := r.client.Chat(context.Background(), ai.ChatRequest{
+		Model:       r.model,
+		Messages:    messages,
+		MaxTokens:   r.config.MaxTokens,
+		Temperature: r.config.Temperature,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("ollama request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("route request failed: %w", err)
 	}
 
-	var ollamaResp intentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return nil, fmt.Errorf("failed to decode ollama response: %w", err)
-	}
+	r.savePrompt(systemPrompt + "\n\n---\n\n" + resp)
 
-	r.logger.Debug("ROUTER", fmt.Sprintf("Ollama raw response:\n%s", ollamaResp.Response))
+	r.logger.Debug("ROUTER", fmt.Sprintf("Raw response:\n%s", resp))
 
-	parsed, err := parseJSON(ollamaResp.Response)
+	parsed, err := parseJSON(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse intent: %w", err)
 	}
@@ -152,7 +117,7 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 		original := parsed.Confidence
 		parsed.Confidence = r.weights.CalibrateWithEvent(parsed.Confidence, parsed.Event)
 		if parsed.Confidence != original {
-			r.logger.Info("ROUTER", fmt.Sprintf("Calibrated confidence: %.2f → %.2f", original, parsed.Confidence))
+			r.logger.Info("ROUTER", fmt.Sprintf("Calibrated confidence: %.2f \u2192 %.2f", original, parsed.Confidence))
 		}
 	}
 
@@ -165,78 +130,91 @@ func (r *Router) GenerateTitle(userInput string) (string, error) {
 		"Extract 3-4 key words from the query below to form a concise title. "+
 			"Return ONLY the title, nothing else.\n\nQuery: %s\n\nTitle:", userInput)
 
-	req := intentRequest{
-		Model:   r.model,
-		Prompt:  titlePrompt,
-		Stream:  false,
-		Options: r.options,
+	messages := []ai.ChatMessage{
+		{Role: "user", Content: titlePrompt},
 	}
 
-	resp, err := r.client.Post(
-		fmt.Sprintf("%s/api/generate", r.endpoint),
-		"application/json",
-		newReader(req),
-	)
+	resp, err := r.client.Chat(context.Background(), ai.ChatRequest{
+		Model:       r.model,
+		Messages:    messages,
+		MaxTokens:   50,
+		Temperature: 0.3,
+	})
 	if err != nil {
 		return "", fmt.Errorf("title generation request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("title generation returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var ollamaResp intentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("failed to decode title response: %w", err)
-	}
-
-	return strings.TrimSpace(ollamaResp.Response), nil
+	return strings.TrimSpace(resp), nil
 }
 
 func (r *Router) Chat(userInput, summaryText, searchResults, topicTitle string) (string, error) {
 	r.logger.Info("ROUTER", fmt.Sprintf("Chat generation for: %s", userInput))
-	p := prompt.ConversationPrompt(userInput, summaryText, searchResults, topicTitle)
 
-	req := intentRequest{
-		Model:   r.model,
-		Prompt:  p,
-		Stream:  false,
-		Options: r.options,
+	convCtx := ""
+	if searchResults != "" {
+		convCtx = "\n\n" + searchResults
+	}
+	systemContent := fmt.Sprintf(`%s
+
+%s
+
+CONVERSATION HISTORY:
+%s%s
+
+TOPIC: %s`,
+		prompt.GuardrailPrefix, prompt.Persona, summaryText, convCtx, topicTitle)
+
+	messages := []ai.ChatMessage{
+		{Role: "system", Content: systemContent},
+		{Role: "user", Content: userInput},
 	}
 
-	resp, err := r.client.Post(
-		fmt.Sprintf("%s/api/generate", r.endpoint),
-		"application/json",
-		newReader(req),
-	)
+	resp, err := r.client.Chat(context.Background(), ai.ChatRequest{
+		Model:       r.model,
+		Messages:    messages,
+		MaxTokens:   r.config.MaxTokens,
+		Temperature: r.config.Temperature,
+	})
 	if err != nil {
-		return "", fmt.Errorf("ollama chat request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("chat request failed: %w", err)
 	}
 
-	var ollamaResp intentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		return "", fmt.Errorf("failed to decode chat response: %w", err)
+	r.logger.Debug("ROUTER", fmt.Sprintf("Chat response: %d chars", len(resp)))
+	return strings.TrimSpace(resp), nil
+}
+
+func (r *Router) ChatStream(userInput, summaryText, searchResults, topicTitle string) (<-chan string, <-chan error) {
+	r.logger.Info("ROUTER", fmt.Sprintf("Chat stream for: %s", userInput))
+
+	convCtx := ""
+	if searchResults != "" {
+		convCtx = "\n\n" + searchResults
+	}
+	systemContent := fmt.Sprintf(`%s
+
+%s
+
+CONVERSATION HISTORY:
+%s%s
+
+TOPIC: %s`,
+		prompt.GuardrailPrefix, prompt.Persona, summaryText, convCtx, topicTitle)
+
+	messages := []ai.ChatMessage{
+		{Role: "system", Content: systemContent},
+		{Role: "user", Content: userInput},
 	}
 
-	r.logger.Debug("ROUTER", fmt.Sprintf("Chat response: %d chars", len(ollamaResp.Response)))
-	return strings.TrimSpace(ollamaResp.Response), nil
+	return r.client.ChatStream(context.Background(), ai.ChatRequest{
+		Model:       r.model,
+		Messages:    messages,
+		MaxTokens:   r.config.MaxTokens,
+		Temperature: r.config.Temperature,
+	})
 }
 
 func (r *Router) HealthCheck() bool {
-	resp, err := r.client.Get(fmt.Sprintf("%s/api/tags", r.endpoint))
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	return r.client.HealthCheck(context.Background())
 }
 
 func (r *Router) savePrompt(p string) {
@@ -264,9 +242,4 @@ func parseJSON(raw string) (*ParsedIntent, error) {
 		parsed.Confidence = 0.5
 	}
 	return &parsed, nil
-}
-
-func newReader(v any) io.Reader {
-	data, _ := json.Marshal(v)
-	return bytes.NewReader(data)
 }

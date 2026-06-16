@@ -1,48 +1,35 @@
 package settings
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
+
+	"dhi_harness/internal/ai"
 )
 
 type Settings struct {
 	SelectedModel string      `json:"selected_model"`
-	Endpoint      string      `json:"endpoint"`
 	Models        []ModelInfo `json:"models"`
 }
 
 type ModelInfo struct {
 	Name       string `json:"name"`
-	Size       int64  `json:"size"`
-	ModifiedAt string `json:"modified_at"`
+	Size       int64  `json:"size,omitempty"`
+	ModifiedAt string `json:"modified_at,omitempty"`
 	ContextLen int    `json:"context_length"`
 }
 
 type Manager struct {
 	dataDir  string
-	endpoint string
+	client   *ai.Client
 	settings *Settings
 	mu       sync.Mutex
-	client   *http.Client
-}
-
-type tagsResponse struct {
-	Models []struct {
-		Name       string `json:"name"`
-		Size       int64  `json:"size"`
-		ModifiedAt string `json:"modified_at"`
-	} `json:"models"`
-}
-
-type showResponse struct {
-	ModelInfo map[string]any `json:"model_info"`
+	config   ai.Config
 }
 
 var knownContextLengths = map[string]int{
@@ -70,15 +57,15 @@ var knownContextLengths = map[string]int{
 	"gemma2:27b":        8192,
 }
 
-func NewManager(dataDir, endpoint string) *Manager {
+func NewManager(dataDir string, client *ai.Client, cfg ai.Config) *Manager {
 	dir := filepath.Join(dataDir, "settings")
 	os.MkdirAll(dir, 0755)
 
 	m := &Manager{
 		dataDir:  dataDir,
-		endpoint: endpoint,
-		client:   &http.Client{Timeout: 10 * time.Second},
-		settings: &Settings{Endpoint: endpoint},
+		client:   client,
+		config:   cfg,
+		settings: &Settings{},
 	}
 
 	m.load()
@@ -89,34 +76,21 @@ func (m *Manager) FetchModels() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	resp, err := m.client.Get(fmt.Sprintf("%s/api/tags", m.endpoint))
+	models, err := m.client.ListModels(context.Background())
 	if err != nil {
 		return fmt.Errorf("fetch models: %w", err)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read tags response: %w", err)
-	}
-
-	var tr tagsResponse
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return fmt.Errorf("parse tags: %w", err)
-	}
-
-	models := make([]ModelInfo, 0, len(tr.Models))
-	for _, m := range tr.Models {
-		models = append(models, ModelInfo{
-			Name:       m.Name,
-			Size:       m.Size,
-			ModifiedAt: m.ModifiedAt,
+	infos := make([]ModelInfo, 0, len(models))
+	for _, name := range models {
+		infos = append(infos, ModelInfo{
+			Name:       name,
+			ContextLen: m.lookupContextLength(name),
 		})
 	}
-	m.settings.Models = models
+	m.settings.Models = infos
 
 	m.resolveSelection()
-	m.resolveContextLengths()
 
 	m.save()
 	return nil
@@ -131,18 +105,27 @@ func (m *Manager) resolveSelection() {
 		}
 		m.settings.SelectedModel = ""
 	}
+
+	if m.config.Model != "" {
+		for _, mdl := range m.settings.Models {
+			if mdl.Name == m.config.Model {
+				m.settings.SelectedModel = mdl.Name
+				return
+			}
+		}
+	}
+
 	if len(m.settings.Models) > 0 {
 		m.settings.SelectedModel = m.settings.Models[0].Name
+		return
 	}
-}
 
-func (m *Manager) resolveContextLengths() {
-	for i, mdl := range m.settings.Models {
-		if mdl.ContextLen > 0 {
-			continue
-		}
-		cl := m.lookupContextLength(mdl.Name)
-		m.settings.Models[i].ContextLen = cl
+	if m.config.Model != "" {
+		m.settings.Models = append(m.settings.Models, ModelInfo{
+			Name:       m.config.Model,
+			ContextLen: m.lookupContextLength(m.config.Model),
+		})
+		m.settings.SelectedModel = m.config.Model
 	}
 }
 
@@ -159,47 +142,7 @@ func (m *Manager) lookupContextLength(name string) int {
 		}
 	}
 
-	cl, err := m.fetchContextLength(name)
-	if err == nil && cl > 0 {
-		return cl
-	}
-
 	return 4096
-}
-
-func (m *Manager) fetchContextLength(name string) (int, error) {
-	reqBody := map[string]string{"model": name}
-	data, _ := json.Marshal(reqBody)
-	resp, err := m.client.Post(
-		fmt.Sprintf("%s/api/show", m.endpoint),
-		"application/json",
-		strings.NewReader(string(data)),
-	)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var sr showResponse
-	if err := json.Unmarshal(body, &sr); err != nil {
-		return 0, err
-	}
-
-	arch, _ := sr.ModelInfo["general.architecture"].(string)
-	if arch == "" {
-		return 0, fmt.Errorf("no architecture found")
-	}
-	clKey := arch + ".context_length"
-	clRaw, ok := sr.ModelInfo[clKey]
-	if !ok {
-		return 0, fmt.Errorf("no context_length for arch %s", arch)
-	}
-	clFloat, ok := clRaw.(float64)
-	if !ok {
-		return 0, fmt.Errorf("context_length not a number")
-	}
-	return int(clFloat), nil
 }
 
 func (m *Manager) SelectModel(name string) error {
@@ -218,7 +161,6 @@ func (m *Manager) SelectModel(name string) error {
 	}
 
 	m.settings.SelectedModel = name
-	m.resolveContextLengths()
 	m.save()
 	return nil
 }
@@ -262,12 +204,6 @@ func (m *Manager) ContextLength() int {
 	return 4096
 }
 
-func (m *Manager) Endpoint() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.settings.Endpoint
-}
-
 func (m *Manager) settingsPath() string {
 	return filepath.Join(m.dataDir, "settings", "settings.json")
 }
@@ -280,9 +216,6 @@ func (m *Manager) load() {
 	var s Settings
 	if json.Unmarshal(data, &s) != nil {
 		return
-	}
-	if s.Endpoint == "" {
-		s.Endpoint = m.endpoint
 	}
 	m.settings = &s
 }

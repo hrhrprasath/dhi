@@ -8,6 +8,7 @@ import (
 
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
+	"dhi_harness/internal/rss"
 	"dhi_harness/internal/services"
 	"dhi_harness/internal/settings"
 	"dhi_harness/internal/task"
@@ -49,6 +50,7 @@ type Model struct {
 	todoMgr     *todo.Manager
 	feedback    FeedbackRecorder
 	settingsMgr *settings.Manager
+	rssMgr      *rss.Manager
 
 	width    int
 	height   int
@@ -71,11 +73,12 @@ type Model struct {
 	tracker  trackerPanel
 	todo     todoPanel
 	schedule schedulePanel
+	rss      rssPanel
 	welcome  welcomePanel
 }
 
 func NewModel(logger *services.Logger, tm *task.Manager,
-	router *intent.Router, pipeExec *pipeline.Executor, topicMgr *topic.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, feedback FeedbackRecorder, settingsMgr *settings.Manager) *Model {
+	router *intent.Router, pipeExec *pipeline.Executor, topicMgr *topic.Manager, sysSvc *services.SystemService, todoMgr *todo.Manager, rssMgr *rss.Manager, feedback FeedbackRecorder, settingsMgr *settings.Manager) *Model {
 
 	ti := textinput.New()
 	ti.Placeholder = " Type a command... (/help for help)"
@@ -92,6 +95,7 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 	mv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(5))
 	tv2 := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
 	sv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
+	rv := viewport.New(viewport.WithWidth(26), viewport.WithHeight(8))
 	lv := viewport.New(viewport.WithWidth(initW), viewport.WithHeight(10))
 	lv.SoftWrap = true
 	lv.SetContent("No logs yet...")
@@ -145,6 +149,7 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 		todoMgr:     todoMgr,
 		feedback:    feedback,
 		settingsMgr: settingsMgr,
+		rssMgr:      rssMgr,
 
 		focused:  focusInput,
 		focusCmd: focusCmd,
@@ -190,6 +195,9 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 		schedule: schedulePanel{
 			view: sv,
 		},
+		rss: rssPanel{
+			view: rv,
+		},
 		welcome: welcomePanel{
 			show:      true,
 			status:    "CHECKING",
@@ -198,16 +206,18 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 		},
 	}
 
-	m.help.content = buildHelpContent(m.settingsMgr.Endpoint())
+	m.rssMgr.SetOnUpdate(func() {
+		m.events <- rssUpdateMsg{}
+	})
+
+	m.help.content = buildHelpContent()
 	m.topic.filterTopics(m.topicMgr.ListTopics())
 	m.model.filterModels(m.settingsMgr.ListModels())
 	m.pipeline.render()
 
 	if cur := m.settingsMgr.CurrentModel(); cur != nil {
 		m.router.SetModel(cur.Name)
-		m.router.SetContextSize(m.settingsMgr.ContextLength())
 		m.executor.SetModel(cur.Name)
-		m.executor.SetContextSize(m.settingsMgr.ContextLength())
 	}
 
 	cur := m.topicMgr.CurrentTopic()
@@ -229,6 +239,7 @@ func (m *Model) Init() tea.Cmd {
 	go m.healthLoop()
 	go m.loggerForwardLoop()
 	m.taskMgr.StartLooper(60 * time.Second)
+	m.rssMgr.StartLooper(15 * time.Minute)
 
 	go func() {
 		activated := m.taskMgr.CheckSchedule()
@@ -280,16 +291,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.log.view.SetHeight(lh)
 		m.cc.convView.SetWidth(vw)
 		m.cc.convView.SetHeight(ch)
+		ph := max(ch-2, 3)
 		m.topic.view.SetWidth(vw - 2)
-		m.topic.view.SetHeight(ch)
-		m.model.view.SetWidth(vw - 2)
+		m.topic.view.SetHeight(ch - 1)
 		m.model.view.SetHeight(ch)
-		m.help.view.SetWidth(vw - 2)
 		m.help.view.SetHeight(ch)
 		m.todo.view.SetWidth(vw - 2)
-		m.todo.view.SetHeight(ch + 1)
+		m.todo.view.SetHeight(ph)
 		m.schedule.view.SetWidth(vw - 2)
-		m.schedule.view.SetHeight(ch + 1)
+		m.schedule.view.SetHeight(ph)
+		m.rss.view.SetWidth(vw - 2)
+		m.rss.view.SetHeight(ph)
 		m.cc.textInput.SetWidth(rw - 24)
 		return m, m.eventPoller()
 
@@ -336,6 +348,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cc.convView.GotoBottom()
 		return m, m.eventPoller()
 
+	case convTokenMsg:
+		for i := len(m.cc.conversations) - 1; i >= 0; i-- {
+			if m.cc.conversations[i].input == msg.input && m.cc.conversations[i].thinking {
+				m.cc.conversations[i].response += msg.token
+				m.cc.convView.GotoBottom()
+				break
+			}
+		}
+		return m, m.eventPoller()
+
+	case convCompleteMsg:
+		for i := len(m.cc.conversations) - 1; i >= 0; i-- {
+			if m.cc.conversations[i].input == msg.input && m.cc.conversations[i].thinking {
+				m.cc.conversations[i].response = stripMarkdown(msg.response)
+				m.cc.conversations[i].thinking = false
+				m.cc.thinking--
+				m.cc.convView.GotoBottom()
+				break
+			}
+		}
+		return m, m.eventPoller()
+
 	case pipelineStatusMsg:
 		for i, p := range m.pipeline.entries {
 			if p.name == msg.name {
@@ -355,6 +389,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, m.eventPoller())
 
 	case refreshMsg:
+		return m, m.eventPoller()
+
+	case rssUpdateMsg:
+		if m.rss.popupOpen {
+			m.rss.loadData(m.rssMgr)
+		}
 		return m, m.eventPoller()
 
 	default:
@@ -381,7 +421,7 @@ func (m *Model) render() string {
 		m.dhiOS.render(),
 		m.system.render(),
 		m.pipeline.render(),
-		m.tracker.render(m.todoMgr, m.taskMgr),
+		m.tracker.render(m.todoMgr, m.taskMgr, m.rssMgr),
 		m.topic.renderRecent(m.topicMgr.ListTopics(), m.topicMgr.CurrentTopic(), m.focused == focusTopics, m.height),
 	)
 
@@ -399,6 +439,8 @@ func (m *Model) render() string {
 		mainBlock = m.todo.renderPopup(rw)
 	case m.schedule.popupOpen:
 		mainBlock = m.schedule.renderPopup(rw)
+	case m.rss.popupOpen:
+		mainBlock = m.rss.renderPopup(rw)
 	default:
 		topicTitle := ""
 		if cur := m.topicMgr.CurrentTopic(); cur != nil {
@@ -487,6 +529,19 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	if m.rss.popupOpen {
+		switch {
+		case msg.Code == tea.KeyEnter:
+			return m.rssEnterSelected()
+		case msg.Code == 'b' || msg.Code == 'B':
+			return m.rssToggleBookmark()
+		case msg.Code == 'r' || msg.Code == 'R':
+			return m.rssRemoveSource()
+		case msg.Code == 's' || msg.Code == 'S':
+			return m.rssRefreshSummary()
+		}
+	}
+
 	if m.focused == focusInput {
 		var cmd tea.Cmd
 		m.cc.textInput, cmd = m.cc.textInput.Update(msg)
@@ -520,6 +575,10 @@ func (m *Model) handleEscape() tea.Cmd {
 	}
 	if m.schedule.popupOpen {
 		m.toggleSchedulePopup()
+		return nil
+	}
+	if m.rss.popupOpen {
+		m.toggleRssPopup()
 		return nil
 	}
 	if m.topic.popupOpen {
@@ -628,8 +687,7 @@ func (m *Model) handleEnter() tea.Cmd {
 		m.cc.slashIndex = 0
 
 		if input == "/help" || input == "/?" || input == ":h" {
-			// refresh content in case endpoint changed
-			m.help.content = buildHelpContent(m.settingsMgr.Endpoint())
+			m.help.content = buildHelpContent()
 			m.toggleHelpPopup()
 			return nil
 		}
@@ -664,6 +722,23 @@ func (m *Model) handleEnter() tea.Cmd {
 		}
 		if input == "/todo" {
 			m.toggleTodoPopup()
+			return nil
+		}
+		if input == "/rss" {
+			m.toggleRssPopup()
+			return nil
+		}
+		if strings.HasPrefix(input, "/rss add ") {
+			url := strings.TrimSpace(strings.TrimPrefix(input, "/rss add "))
+			if err := m.rssMgr.AddSource(url); err != nil {
+				msg := fmt.Sprintf("Failed to add RSS feed: %v", err)
+				m.logger.Info("RSS", msg)
+				m.events <- logMsg{message: fmt.Sprintf("[RSS][ERROR] %s", msg)}
+			} else {
+				msg := fmt.Sprintf("Added RSS feed: %s", url)
+				m.logger.Info("RSS", msg)
+				m.events <- logMsg{message: fmt.Sprintf("[RSS][INFO] %s", msg)}
+			}
 			return nil
 		}
 		if input == "/schedule" {
@@ -730,6 +805,12 @@ func (m *Model) handleArrowUp() tea.Cmd {
 		}
 		return nil
 	}
+	if m.rss.popupOpen {
+		if m.rss.selIdx > 0 {
+			m.rss.selIdx--
+		}
+		return nil
+	}
 	switch m.focused {
 	case focusLogs:
 		m.log.view.ScrollUp(3)
@@ -770,6 +851,21 @@ func (m *Model) handleArrowDown() tea.Cmd {
 	if m.model.popupOpen {
 		if m.model.selIdx < len(m.model.filtered)-1 {
 			m.model.selIdx++
+		}
+		return nil
+	}
+	if m.rss.popupOpen {
+		maxIdx := 0
+		switch m.rss.tabIdx {
+		case 0:
+			maxIdx = 0
+		case 1:
+			maxIdx = len(m.rss.rawItems) - 1
+		case 2:
+			maxIdx = len(m.rss.bookmarkItems) - 1
+		}
+		if m.rss.selIdx < maxIdx {
+			m.rss.selIdx++
 		}
 		return nil
 	}
@@ -868,7 +964,7 @@ func (m *Model) handleMouseClick(mouse tea.Mouse) tea.Cmd {
 var slashCommands = []string{
 	"/good", "/bad", "/log", "/logs", "/quit",
 	"/new", "/fork", "/resume", "/topic", "/topics",
-	"/model", "/models", "/todo", "/schedule", "/help", "/?",
+	"/model", "/models", "/todo", "/rss", "/schedule", "/help", "/?",
 }
 
 func (m *Model) computeSlashMatches(prefix string) {
@@ -1003,9 +1099,7 @@ func (m *Model) handleModelSelect(name string) {
 		return
 	}
 	m.router.SetModel(name)
-	m.router.SetContextSize(m.settingsMgr.ContextLength())
 	m.executor.SetModel(name)
-	m.executor.SetContextSize(m.settingsMgr.ContextLength())
 	m.feedback.SetModel(name)
 
 	msg := fmt.Sprintf("Switched to model: %s (%dK ctx)", name, m.settingsMgr.ContextLength()/1024)
@@ -1247,6 +1341,133 @@ func (m *Model) scheduleResetSelected() tea.Cmd {
 	return nil
 }
 
+func (m *Model) toggleRssPopup() {
+	m.rss.popupOpen = !m.rss.popupOpen
+	if m.rss.popupOpen {
+		m.rss.tabIdx = 0
+		m.rss.selIdx = 0
+		m.rss.loadData(m.rssMgr)
+		m.rss.view.GotoBottom()
+		m.focused = focusLogs
+		m.cc.textInput.Blur()
+
+		if !m.rss.loaded || time.Since(m.rss.lastFetch) > 15*time.Minute {
+			m.rss.loading = true
+			m.rss.loaded = false
+			go func() {
+				m.rssMgr.FetchAll()
+				m.rss.loadData(m.rssMgr)
+				m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 20)
+				m.rss.loading = false
+				m.rss.loaded = true
+				m.rss.lastFetch = time.Now()
+				m.events <- refreshMsg{}
+			}()
+		} else if m.rss.aiSummary == "" && m.rss.loaded {
+			m.rss.loading = true
+			go func() {
+				m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 20)
+				m.rss.loading = false
+				m.events <- refreshMsg{}
+			}()
+		}
+	} else {
+		m.focused = focusInput
+		m.cc.textInput.Focus()
+	}
+}
+
+func (m *Model) rssEnterSelected() tea.Cmd {
+	if m.rss.tabIdx == 0 {
+		return nil
+	}
+	var entry *rss.FeedEntry
+	if m.rss.tabIdx == 1 {
+		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.rawItems) {
+			return nil
+		}
+		item := m.rss.rawItems[m.rss.selIdx]
+		if item.isSource {
+			return nil
+		}
+		entry = &item.entry
+	} else if m.rss.tabIdx == 2 {
+		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.bookmarkItems) {
+			return nil
+		}
+		entry = &m.rss.bookmarkItems[m.rss.selIdx]
+	}
+	if entry == nil || entry.Link == "" {
+		return nil
+	}
+	m.handleOpenURL(entry.Link)
+	return nil
+}
+
+func (m *Model) rssToggleBookmark() tea.Cmd {
+	if m.rss.tabIdx == 0 {
+		return nil
+	}
+	var entryID string
+	if m.rss.tabIdx == 1 {
+		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.rawItems) {
+			return nil
+		}
+		item := m.rss.rawItems[m.rss.selIdx]
+		if item.isSource {
+			return nil
+		}
+		entryID = item.entry.ID
+	} else if m.rss.tabIdx == 2 {
+		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.bookmarkItems) {
+			return nil
+		}
+		entryID = m.rss.bookmarkItems[m.rss.selIdx].ID
+	}
+	if entryID == "" {
+		return nil
+	}
+	m.rssMgr.ToggleBookmark(entryID)
+	m.rss.loadData(m.rssMgr)
+	return nil
+}
+
+func (m *Model) rssRemoveSource() tea.Cmd {
+	if m.rss.tabIdx != 1 {
+		return nil
+	}
+	if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.rawItems) {
+		return nil
+	}
+	item := m.rss.rawItems[m.rss.selIdx]
+	if !item.isSource {
+		return nil
+	}
+	m.rssMgr.RemoveSource(item.source.ID)
+	m.rss.loadData(m.rssMgr)
+	m.rss.aiSummary = ""
+	if m.rss.selIdx >= len(m.rss.rawItems) && m.rss.selIdx > 0 {
+		m.rss.selIdx--
+	}
+	return nil
+}
+
+func (m *Model) rssRefreshSummary() tea.Cmd {
+	if m.rss.tabIdx != 0 {
+		return nil
+	}
+	if !m.rss.loaded {
+		return nil
+	}
+	m.rss.loading = true
+	go func() {
+		m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 20)
+		m.rss.loading = false
+		m.events <- refreshMsg{}
+	}()
+	return nil
+}
+
 func (m *Model) handleArrowLeft() tea.Cmd {
 	if m.todo.popupOpen {
 		if m.todo.tabIdx > 0 {
@@ -1263,6 +1484,15 @@ func (m *Model) handleArrowLeft() tea.Cmd {
 			m.schedule.selIdx = 0
 			m.schedule.loadItems(m.taskMgr)
 			m.schedule.view.GotoBottom()
+		}
+		return nil
+	}
+	if m.rss.popupOpen {
+		if m.rss.tabIdx > 0 {
+			m.rss.tabIdx--
+			m.rss.selIdx = 0
+			m.rss.loadData(m.rssMgr)
+			m.rss.view.GotoBottom()
 		}
 		return nil
 	}
@@ -1285,6 +1515,15 @@ func (m *Model) handleArrowRight() tea.Cmd {
 			m.schedule.selIdx = 0
 			m.schedule.loadItems(m.taskMgr)
 			m.schedule.view.GotoBottom()
+		}
+		return nil
+	}
+	if m.rss.popupOpen {
+		if m.rss.tabIdx < 2 {
+			m.rss.tabIdx++
+			m.rss.selIdx = 0
+			m.rss.loadData(m.rssMgr)
+			m.rss.view.GotoBottom()
 		}
 		return nil
 	}
