@@ -145,36 +145,39 @@ func ClassifyPrompt(userInput, summaryText, topicTitle string, calibrationBlock 
 CONVERSATION HISTORY:
 %s
 
-	CLASSIFIER:
-	Default action is CONVERSATION. Only use EXECUTE_XXX for clear actionable requests.
+[CLASSIFICATION TASK — DO NOT ANSWER THE USER]
+Your ONLY task is to output a JSON object classifying the user's intent. Do NOT write any explanation, answer, or text before or after the JSON. Do NOT include markdown or code fences.
 
-	EXECUTE_XXX pipelines are defined below (event, description, weight, keywords, params). Use them when the user's request clearly matches a pipeline's purpose. Do NOT invent pipeline names — only use the events listed below.
+CLASSIFIER:
+Default action is CONVERSATION. Only use EXECUTE_XXX for clear actionable requests.
 
-	Internal actions (no EXECUTE_ prefix):
-	- CONVERSATION: for chat, questions, opinions, creative content, small talk, or when no pipeline matches. params: search_terms (optional string array — key nouns/entities to search past data)
-	  Examples:
-	  "how are you?" -> {"event": "CONVERSATION", "params": {}, "description": "Respond to greeting", "confidence": 0.55}
-	  "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke", "confidence": 0.55}
-	  "what did we discuss about X?" -> {"event": "CONVERSATION", "params": {"search_terms": ["X"]}, "description": "Retrieve past discussion about X", "confidence": 0.65}
+EXECUTE_XXX pipelines are defined below (event, description, weight, keywords, params). Use them when the user's request clearly matches a pipeline's purpose. Do NOT invent pipeline names — only use the events listed below.
 
-	RULE: The "description" field must be a brief, specific summary of the action for this particular user query.
-	  Good:  "description": "Greet the user"
-	  Bad:   "description": "CONVERSATION"
-	  Good:  "description": "Add milk to the shopping list"
-	  Bad:   "description": "Todo queries with actions"
+Internal actions (no EXECUTE_ prefix):
+- CONVERSATION: for chat, questions, opinions, creative content, small talk, or when no pipeline matches. params: search_terms (optional string array — key nouns/entities to search past data)
+  Examples:
+  "how are you?" -> {"event": "CONVERSATION", "params": {}, "description": "Respond to greeting", "confidence": 0.55}
+  "tell me a joke" -> {"event": "CONVERSATION", "params": {}, "description": "Tell a joke", "confidence": 0.55}
+  "what did we discuss about X?" -> {"event": "CONVERSATION", "params": {"search_terms": ["X"]}, "description": "Retrieve past discussion about X", "confidence": 0.65}
 
-	CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you are about this classification.
-	  > 0.9: Very clear explicit request matching a specific pipeline
-	  > 0.8: Clear actionable request
-	  > 0.6: Likely actionable but some ambiguity
-	  < 0.6: Ambiguous, default to CONVERSATION
+RULE: The "description" field must be a brief, specific summary of the action for this particular user query.
+  Good:  "description": "Greet the user"
+  Bad:   "description": "CONVERSATION"
+  Good:  "description": "Add milk to the shopping list"
+  Bad:   "description": "Todo queries with actions"
+
+CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you are about this classification.
+  > 0.9: Very clear explicit request matching a specific pipeline
+  > 0.8: Clear actionable request
+  > 0.6: Likely actionable but some ambiguity
+  < 0.6: Ambiguous, default to CONVERSATION
 
 %[4]s%[5]s%[6]s
 
 TOPIC: %[7]s
 USER_INPUT: %[8]s
 
-Output ONLY valid JSON (no extra text):`,
+Output ONLY a single JSON object. No other text. No explanation. No markdown. No code fences. Start directly with "{" and end with "}":`,
 		GuardrailPrefix, Persona, summaryText, schema, cal, kw, topicTitle, userInput)
 }
 

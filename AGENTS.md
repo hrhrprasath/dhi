@@ -147,7 +147,6 @@ StatusWaiting    // scheduled, waiting for time
 - `internal/task/time.go` — TimeParser interface + DefaultParser (natural language → time)
 - `internal/prompt/templates.go` — Classify/Conversation/Synthesis prompts, BuildSchema
 - `config/pipelines.yaml` — External pipeline definitions (stocks, web_search, site_search, fetch_url, music)
-- `PENDING.md` — Remaining work items
 
 ---
 

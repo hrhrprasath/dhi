@@ -16,7 +16,6 @@ go build -o build/dhi ./cmd/dhi && ./build/dhi
 ├── cmd/dhi/main.go        # Entry point, wires dependencies
 ├── internal/
 │   ├── config/            # Config loading (YAML)
-│   ├── conversation/      # Conversation context persistence
 │   ├── intent/            # LLM router: classify + chat via Ollama
 │   ├── learn/             # Self-learning feedback loop (weights, calibration, keywords)
 │   ├── pipeline/          # Pipeline definitions, executor, internal handlers
@@ -27,8 +26,7 @@ go build -o build/dhi ./cmd/dhi && ./build/dhi
 │   └── todo/              # Todo CRUD
 ├── tui/                   # Bubble Tea TUI (types, model, view, update)
 ├── config/pipelines.yaml  # Pipeline definitions (stocks, web_search, site_search, fetch_url, music)
-├── doc/                   # Design documents
-└── docs/                  # Architecture analysis, user guide
+└── docs/                  # Design docs, architecture analysis, user guide
 ```
 
 ## Pipelines

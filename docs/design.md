@@ -229,16 +229,15 @@ The `TimeParser` interface handles natural language time expressions:
 ```
 .data/
 ├── dhi.log               # Logger output
-├── conversation/
-│   └── summary.json      # Full conversation turns (up to 50)
+├── topics/               # Topic-based conversation storage
 ├── todos/
 │   └── todos.json        # User todo list
 ├── tasks/
 │   └── tasks.json        # All tasks (pending, completed, scheduled)
-├── intent/
-│   └── <timestamp>.md    # Raw classify prompt dumps
-└── <pipeline>/
-    └── <timestamp>.md    # Pipeline output persistence
+├── settings/
+│   └── settings.json     # Model settings
+├── learn/                # Self-learning weights and stats
+└── rss/                  # RSS feed data
 ```
 
 ---

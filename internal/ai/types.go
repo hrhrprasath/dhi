@@ -22,15 +22,6 @@ type ChatRequest struct {
 	Stream      bool          `json:"stream"`
 }
 
-type ChatCompletionChunk struct {
-	Choices []struct {
-		Delta struct {
-			Content string `json:"content"`
-		} `json:"delta"`
-		FinishReason *string `json:"finish_reason"`
-	} `json:"choices"`
-}
-
 type ChatCompletion struct {
 	Choices []struct {
 		Message struct {
@@ -45,9 +36,4 @@ type ModelList struct {
 	} `json:"data"`
 }
 
-type ErrorResponse struct {
-	Error struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-	} `json:"error"`
-}
+

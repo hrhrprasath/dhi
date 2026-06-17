@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -37,45 +38,8 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 	return req, nil
 }
 
-func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (<-chan string, <-chan error) {
-	req.Stream = true
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		tokenCh := make(chan string)
-		errCh := make(chan error, 1)
-		close(tokenCh)
-		errCh <- fmt.Errorf("marshal request: %w", err)
-		close(errCh)
-		return tokenCh, errCh
-	}
-
-	httpReq, err := c.newRequest("POST", "/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		tokenCh := make(chan string)
-		errCh := make(chan error, 1)
-		close(tokenCh)
-		errCh <- fmt.Errorf("create request: %w", err)
-		close(errCh)
-		return tokenCh, errCh
-	}
-	httpReq = httpReq.WithContext(ctx)
-
-	resp, err := c.http.Do(httpReq)
-	if err != nil {
-		tokenCh := make(chan string)
-		errCh := make(chan error, 1)
-		close(tokenCh)
-		errCh <- fmt.Errorf("request failed: %w", err)
-		close(errCh)
-		return tokenCh, errCh
-	}
-
-	return parseSSEStream(resp)
-}
-
 func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
-	req.Stream = true
+	req.Stream = false
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -92,8 +56,42 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
+	defer resp.Body.Close()
 
-	return joinStream(resp)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var completion ChatCompletion
+	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+
+	if len(completion.Choices) == 0 {
+		return "", fmt.Errorf("empty response from API")
+	}
+
+	return completion.Choices[0].Message.Content, nil
+}
+
+func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (<-chan string, <-chan error) {
+	tokenCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer close(tokenCh)
+		defer close(errCh)
+
+		resp, err := c.Chat(ctx, req)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		tokenCh <- resp
+	}()
+
+	return tokenCh, errCh
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]string, error) {

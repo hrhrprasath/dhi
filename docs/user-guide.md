@@ -192,11 +192,12 @@ All data is stored in `.data/`:
 ```
 .data/
 ├── dhi.log                 # Application logs
-├── tasks/tasks.json        # All tasks (pending + completed + scheduled)
+├── topics/                 # Topic-based conversation storage
 ├── todos/todos.json        # User todo list
-├── conversation/summary.json  # Conversation history
-├── intent/<timestamp>.md   # Classify prompt dumps
-└── <pipeline>/<timestamp>.md  # Pipeline output persistence
+├── tasks/tasks.json        # All tasks (pending + completed + scheduled)
+├── settings/settings.json  # Model settings
+├── learn/                  # Self-learning weights and stats
+└── rss/                    # RSS feed data
 ```
 
 ---

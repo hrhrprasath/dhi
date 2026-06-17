@@ -79,12 +79,12 @@ func (m *Model) processTasks() {
 	}
 	intentResult, err := m.router.Route(t.RawInput, summaryText, topicTitle)
 	if err != nil {
-		m.logger.Error("CONSUMER", fmt.Sprintf("Classify failed: %s", err))
-		m.taskMgr.Update(t.ID, func(upd *task.Task) {
-			upd.RetryCount++
-			upd.Status = task.StatusPending
-		})
-		return
+		m.logger.Error("CONSUMER", fmt.Sprintf("Classify failed: %s — falling back to conversation", err))
+		intentResult = &intent.ParsedIntent{
+			Event:       "CONVERSATION",
+			Description: "Fallback conversation from failed classify",
+			Confidence:  0.5,
+		}
 	}
 
 	if cur := m.topicMgr.CurrentTopic(); cur != nil && strings.HasPrefix(cur.Title, "Topic ") {
