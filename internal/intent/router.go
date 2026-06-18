@@ -29,20 +29,24 @@ type WeightProvider interface {
 }
 
 type Router struct {
-	client  *ai.Client
-	model   string
-	config  ai.Config
-	logger  *services.Logger
-	weights WeightProvider
+	client       *ai.Client
+	model        string
+	config       ai.Config
+	logger       *services.Logger
+	weights      WeightProvider
+	dataDir      string
+	pipelinePath string
 }
 
-func NewRouter(cfg ai.Config, logger *services.Logger) *Router {
+func NewRouter(cfg ai.Config, logger *services.Logger, dataDir, pipelinePath string) *Router {
 	logger.Info("ROUTER", fmt.Sprintf("AI Router initialized (provider: %s)", cfg.Provider))
 	return &Router{
-		client: ai.NewClient(cfg),
-		model:  cfg.Model,
-		config: cfg,
-		logger: logger,
+		client:       ai.NewClient(cfg),
+		model:        cfg.Model,
+		config:       cfg,
+		logger:       logger,
+		dataDir:      dataDir,
+		pipelinePath: pipelinePath,
 	}
 }
 
@@ -58,7 +62,7 @@ func (r *Router) buildWeightLines(userInput string) map[string]string {
 	if r.weights == nil {
 		return nil
 	}
-	pipelines := prompt.LoadPipelineInfos()
+	pipelines := prompt.LoadPipelineInfos(r.pipelinePath)
 	lines := make(map[string]string, len(pipelines))
 	for _, p := range pipelines {
 		wl := r.weights.BuildWeightLine(p.Name, userInput, p.Weight)
@@ -77,7 +81,7 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 	weightLines := r.buildWeightLines(userInput)
 	if r.weights != nil {
 		calBlock = r.weights.BuildCalibrationBlock()
-		pipelines := prompt.LoadPipelineInfos()
+		pipelines := prompt.LoadPipelineInfos(r.pipelinePath)
 		pipelineKeywords := make(map[string][]string)
 		for _, p := range pipelines {
 			if len(p.Keywords) > 0 {
@@ -87,7 +91,7 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 		keywordBlock = r.weights.BuildKeywordBlock(userInput, pipelineKeywords)
 	}
 
-	systemPrompt := prompt.ClassifyPrompt(userInput, summaryText, topicTitle, calBlock, keywordBlock, weightLines)
+	systemPrompt := prompt.ClassifyPrompt(userInput, summaryText, topicTitle, calBlock, keywordBlock, weightLines, r.pipelinePath)
 
 	messages := []ai.ChatMessage{
 		{Role: "system", Content: systemPrompt},
@@ -218,7 +222,7 @@ func (r *Router) HealthCheck() bool {
 }
 
 func (r *Router) savePrompt(p string) {
-	dir := filepath.Join(".data", "intent")
+	dir := filepath.Join(r.dataDir, "intent")
 	os.MkdirAll(dir, 0755)
 	filename := time.Now().Format("2006-01-02T15-04-05") + ".md"
 	os.WriteFile(filepath.Join(dir, filename), []byte("# Intent Prompt\n\n"+p), 0644)

@@ -54,7 +54,7 @@ func buildHelpContent() string {
 	sb.WriteString("\n")
 
 	sb.WriteString(header("Configuration"))
-	sb.WriteString("See config/config.yaml for AI provider settings\n")
+	sb.WriteString("See ~/.dhi/config.yaml for AI provider settings\n")
 	sb.WriteString("  provider, base_url, api_key, model, max_tokens, temperature\n")
 	sb.WriteString("  Supports: ollama, groq, openrouter, openai, vllm, nim, custom\n")
 

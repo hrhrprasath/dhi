@@ -146,7 +146,13 @@ StatusWaiting    // scheduled, waiting for time
 - `internal/task/manager.go` — Task CRUD, persistence, 60s looper
 - `internal/task/time.go` — TimeParser interface + DefaultParser (natural language → time)
 - `internal/prompt/templates.go` — Classify/Conversation/Synthesis prompts, BuildSchema
-- `config/pipelines.yaml` — External pipeline definitions (stocks, web_search, site_search, fetch_url, music)
+- `internal/dhroot/paths.go` — Central `~/.dhi` path resolution (Root, DataDir, ConfigPath, PipelinePath, ScriptsDir)
+- `internal/dhroot/defaults.go` — First-run auto-population of `~/.dhi/` via `//go:embed`
+- `internal/dhroot/defaultdata/` — Embedded default config.yaml, pipelines.yaml, and scripts
+- `~/.dhi/config.yaml` — Runtime AI provider config (auto-populated from embedded defaults)
+- `~/.dhi/pipelines.yaml` — Runtime external pipeline definitions (auto-populated from embedded defaults)
+- `~/.dhi/data/` — Runtime data directory (tasks, todos, topics, settings, learn, rss, logs)
+- `~/.dhi/scripts/` — Runtime shell scripts for pipeline actions (auto-populated)
 
 ---
 

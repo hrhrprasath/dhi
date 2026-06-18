@@ -53,7 +53,7 @@ type Config struct {
 
 func NewManager(path string) *Manager {
 	if path == "" {
-		path = "config/pipelines.yaml"
+		return &Manager{}
 	}
 	var pipelines []Pipeline
 	data, err := os.ReadFile(path)

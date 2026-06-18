@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"dhi_harness/internal/summarizer"
@@ -23,13 +24,17 @@ type Executor struct {
 	manager    *Manager
 	summarizer *summarizer.Summarizer
 	handlers   *Handlers
+	dataDir    string
+	scriptsDir string
 }
 
-func NewExecutor(manager *Manager, sum *summarizer.Summarizer, taskMgr *task.Manager) *Executor {
+func NewExecutor(manager *Manager, sum *summarizer.Summarizer, taskMgr *task.Manager, dataDir, scriptsDir string) *Executor {
 	return &Executor{
 		manager:    manager,
 		summarizer: sum,
-		handlers:   NewHandlers(todo.NewManager(".data"), taskMgr),
+		handlers:   NewHandlers(todo.NewManager(dataDir), taskMgr),
+		dataDir:    dataDir,
+		scriptsDir: scriptsDir,
 	}
 }
 
@@ -170,11 +175,25 @@ func (e *Executor) executeExec(action PipelineAction, params map[string]string) 
 
 func (e *Executor) executeBash(action PipelineAction, params map[string]string) string {
 	script := e.interpolate(action.Script, params)
+	script = e.resolveScript(script)
 	out, err := runCmd("bash", "-c", script)
 	if err != nil {
 		return fmt.Sprintf("Script failed: %s", err)
 	}
 	return out
+}
+
+func (e *Executor) resolveScript(script string) string {
+	fields := strings.Fields(script)
+	if len(fields) == 0 {
+		return script
+	}
+	if strings.HasPrefix(fields[0], "scripts/") {
+		rel := fields[0][len("scripts/"):]
+		fields[0] = filepath.Join(e.scriptsDir, rel)
+		return strings.Join(fields, " ")
+	}
+	return script
 }
 
 func (e *Executor) interpolate(template string, params map[string]string) string {

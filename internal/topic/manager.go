@@ -410,12 +410,12 @@ func ExtractSearchTerms(params json.RawMessage) []string {
 	return terms
 }
 
-func SearchPastData(terms []string) (string, error) {
+func (m *Manager) SearchPastData(terms []string) (string, error) {
 	if len(terms) == 0 {
 		return "", nil
 	}
 	pattern := strings.Join(terms, "|")
-	args := append([]string{"-i", "-l", pattern, ".data"}, "-r")
+	args := append([]string{"-i", "-l", pattern, m.dataDir}, "-r")
 
 	cmd := exec.Command("rg", args...)
 	out, err := cmd.Output()

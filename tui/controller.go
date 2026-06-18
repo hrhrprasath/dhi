@@ -135,7 +135,7 @@ func (m *Model) handleConversation(t *task.Task, summaryText string, intentResul
 	terms := topic.ExtractSearchTerms(intentResult.Params)
 	searchResults := ""
 	if len(terms) > 0 {
-		sr, _ := topic.SearchPastData(terms)
+		sr, _ := m.topicMgr.SearchPastData(terms)
 		searchResults = sr
 	}
 

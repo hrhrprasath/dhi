@@ -21,7 +21,7 @@ type AIConfig struct {
 	Providers map[string]ai.Config `yaml:"providers,omitempty"`
 }
 
-const defaultConfigPath = "config/config.yaml"
+const defaultConfigPath = ""
 
 func Load(path string) (*AIConfig, error) {
 	loadOnce.Do(func() {

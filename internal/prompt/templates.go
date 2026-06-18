@@ -34,8 +34,8 @@ COMMUNICATION STYLE:
 - Never fabricate facts, model names, versions, or release dates
 - If unable to help, politely explains why and offers alternatives`
 
-func BuildSchema(weightLines map[string]string) string {
-	pipelines := LoadPipelineInfos()
+func BuildSchema(weightLines map[string]string, pipelinePath string) string {
+	pipelines := LoadPipelineInfos(pipelinePath)
 	var sb strings.Builder
 	for _, p := range pipelines {
 		event := fmt.Sprintf("EXECUTE_%s", strings.ToUpper(p.Name))
@@ -128,8 +128,8 @@ func exampleValue(name string) string {
 	}
 }
 
-func ClassifyPrompt(userInput, summaryText, topicTitle string, calibrationBlock string, keywordBlock string, weightLines map[string]string) string {
-	schema := BuildSchema(weightLines)
+func ClassifyPrompt(userInput, summaryText, topicTitle string, calibrationBlock string, keywordBlock string, weightLines map[string]string, pipelinePath string) string {
+	schema := BuildSchema(weightLines, pipelinePath)
 	cal := ""
 	if calibrationBlock != "" {
 		cal = "\n" + calibrationBlock
@@ -247,10 +247,10 @@ type ParamInfo struct {
 	ExtractHint string
 }
 
-func LoadPipelineInfos() []PipelineInfo {
+func LoadPipelineInfos(path string) []PipelineInfo {
 	var result []PipelineInfo
 
-	data, err := os.ReadFile("config/pipelines.yaml")
+	data, err := os.ReadFile(path)
 	if err == nil {
 		type rawPipeline struct {
 			Name        string   `yaml:"name"`
