@@ -108,8 +108,8 @@ func parseInt(s string) int {
 func stripMarkdown(s string) string {
 	s = regexp.MustCompile("```[\\s\\S]*?```").ReplaceAllString(s, "")
 	s = regexp.MustCompile("`[^`]*`").ReplaceAllString(s, "")
-	s = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
 	s = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
+	s = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
 	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "$1")
 	s = regexp.MustCompile("__(.*?)__").ReplaceAllString(s, "$1")
 	s = regexp.MustCompile(`\*(.*?)\*`).ReplaceAllString(s, "$1")

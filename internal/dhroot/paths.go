@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 )
 
+var userHomeDir = os.UserHomeDir
+
 func Root() string {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return filepath.Join(".dhi")
 	}
