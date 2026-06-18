@@ -77,24 +77,44 @@ func (m *Model) processTasks() {
 	if cur := m.topicMgr.CurrentTopic(); cur != nil {
 		topicTitle = cur.Title
 	}
-	intentResult, err := m.router.Route(t.RawInput, summaryText, topicTitle)
-	if err != nil {
-		m.logger.Error("CONSUMER", fmt.Sprintf("Classify failed: %s — falling back to conversation", err))
+
+	type routeResult struct {
+		intent *intent.ParsedIntent
+		err    error
+	}
+	routeCh := make(chan routeResult, 1)
+	go func(input, summary, title string) {
+		intent, err := m.router.Route(input, summary, title)
+		routeCh <- routeResult{intent, err}
+	}(t.RawInput, summaryText, topicTitle)
+
+	titleCh := make(chan struct{}, 1)
+	if cur := m.topicMgr.CurrentTopic(); cur != nil && strings.HasPrefix(cur.Title, "Topic ") {
+		go func(raw string, topicID string) {
+			if title, err := m.router.GenerateTitle(raw); err == nil {
+				title = cleanTitle(title)
+				if title != "" {
+					m.topicMgr.UpdateTitle(topicID, title)
+					m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] Auto-titled: %s", title)}
+					m.events <- refreshMsg{}
+				}
+			}
+			titleCh <- struct{}{}
+		}(t.RawInput, cur.ID)
+	} else {
+		close(titleCh)
+	}
+
+	rr := <-routeCh
+	<-titleCh
+
+	intentResult := rr.intent
+	if rr.err != nil {
+		m.logger.Error("CONSUMER", fmt.Sprintf("Classify failed: %s — falling back to conversation", rr.err))
 		intentResult = &intent.ParsedIntent{
 			Event:       "CONVERSATION",
 			Description: "Fallback conversation from failed classify",
 			Confidence:  0.5,
-		}
-	}
-
-	if cur := m.topicMgr.CurrentTopic(); cur != nil && strings.HasPrefix(cur.Title, "Topic ") {
-		if title, err := m.router.GenerateTitle(t.RawInput); err == nil {
-			title = cleanTitle(title)
-			if title != "" {
-				m.topicMgr.UpdateTitle(cur.ID, title)
-				m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] Auto-titled: %s", title)}
-				m.events <- refreshMsg{}
-			}
 		}
 	}
 

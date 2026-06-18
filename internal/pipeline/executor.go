@@ -44,7 +44,7 @@ func (e *Executor) FindAndExecute(event string, params map[string]string, userIn
 		return "", "Unable to determine action: event unknown"
 	}
 
-	resolved := e.resolveParams(pl.Params, params)
+	resolved := e.resolveParams(pl.Params, params, userInput)
 	if err := e.validate(pl.Params, resolved); err != "" {
 		return "", "Parameter validation failed: " + err
 	}
@@ -104,14 +104,18 @@ func (e *Executor) validate(defs []ParamDefinition, params map[string]string) st
 	return ""
 }
 
-func (e *Executor) resolveParams(defs []ParamDefinition, input map[string]string) map[string]string {
+func (e *Executor) resolveParams(defs []ParamDefinition, input map[string]string, userInput string) map[string]string {
 	result := make(map[string]string)
 	for k, v := range input {
 		result[k] = v
 	}
 	for _, d := range defs {
-		if _, ok := result[d.Name]; !ok && d.Default != "" {
-			result[d.Name] = d.Default
+		if _, ok := result[d.Name]; !ok {
+			if d.Default != "" {
+				result[d.Name] = d.Default
+			} else if d.Required && userInput != "" {
+				result[d.Name] = userInput
+			}
 		}
 	}
 	return result

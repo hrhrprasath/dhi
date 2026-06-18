@@ -225,11 +225,13 @@ func (r *Router) savePrompt(p string) {
 }
 
 func parseJSON(raw string) (*ParsedIntent, error) {
-	trimmed := strings.TrimSpace(raw)
-	trimmed = strings.TrimPrefix(trimmed, "```json")
-	trimmed = strings.TrimPrefix(trimmed, "```")
-	trimmed = strings.TrimSuffix(trimmed, "```")
-	trimmed = strings.TrimSpace(trimmed)
+	raw = strings.TrimSpace(raw)
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start == -1 || end == -1 || end <= start {
+		return nil, fmt.Errorf("no JSON object found in response: %s", raw)
+	}
+	trimmed := raw[start : end+1]
 
 	var parsed ParsedIntent
 	if err := json.Unmarshal([]byte(trimmed), &parsed); err != nil {

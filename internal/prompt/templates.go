@@ -166,6 +166,8 @@ RULE: The "description" field must be a brief, specific summary of the action fo
   Good:  "description": "Add milk to the shopping list"
   Bad:   "description": "Todo queries with actions"
 
+RULE: For EXECUTE_XXX events, you MUST extract parameter values from the USER_INPUT and include them in the "params" object. Look at each pipeline's param definitions to know what to extract. If a required param's value is clearly present in the user input, put it in params.
+
 CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you are about this classification.
   > 0.9: Very clear explicit request matching a specific pipeline
   > 0.8: Clear actionable request
@@ -177,7 +179,14 @@ CONFIDENCE: Include a "confidence" field (0.0–1.0) indicating how certain you 
 TOPIC: %[7]s
 USER_INPUT: %[8]s
 
-Output ONLY a single JSON object. No other text. No explanation. No markdown. No code fences. Start directly with "{" and end with "}":`,
+Output ONLY a single JSON object. No other text. No explanation. No markdown. No code fences. Start directly with "{" and end with "}".
+
+FORBIDDEN (never do this): markdown code blocks (triple backticks) around the JSON, explanation text, or anything other than the raw JSON object.
+
+CORRECT (includes params extracted from user input):
+{"event": "EXECUTE_PIPELINE_NAME", "params": {"param1": "value extracted from input", "param2": "another value"}, "description": "Brief description of the action", "confidence": 0.9}
+
+Now output ONLY the JSON object:`,
 		GuardrailPrefix, Persona, summaryText, schema, cal, kw, topicTitle, userInput)
 }
 
