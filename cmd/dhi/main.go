@@ -77,7 +77,7 @@ func main() {
 	// Pre-warm agent-browser daemon so first search isn't slowed by Chrome cold start
 	go func() {
 		if _, err := osexec.LookPath("agent-browser"); err == nil {
-			osexec.Command("bash", "-c", "agent-browser batch 'open about:blank' 'wait 100' 2>/dev/null").Run()
+			_ = osexec.Command("bash", "-c", "agent-browser batch 'open about:blank' 'wait 100' 2>/dev/null").Run()
 		}
 	}()
 

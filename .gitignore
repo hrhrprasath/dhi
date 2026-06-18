@@ -1,2 +1,26 @@
-.data
-/build
+# Binaries
+/dhi
+/build/
+
+# Runtime data
+.data/
+.dhi/
+
+# Environment files
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependencies
+node_modules/
+vendor/
