@@ -22,13 +22,14 @@ func (p *pipelinePanel) render() string {
 	var sb strings.Builder
 	for _, pe := range p.entries {
 		statusColor := greenColor
-		if pe.status == "RUNNING" {
+		switch pe.status {
+		case "RUNNING":
 			statusColor = yellowColor
-		} else if pe.status == "FAILED" {
+		case "FAILED":
 			statusColor = redColor
 		}
 		line := lipgloss.NewStyle().Foreground(statusColor).Render(pe.status)
-		sb.WriteString(fmt.Sprintf("%-15s %s\n", pe.name, line))
+		fmt.Fprintf(&sb, "%-15s %s\n", pe.name, line)
 	}
 	p.view.SetContent(sb.String())
 

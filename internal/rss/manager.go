@@ -45,7 +45,7 @@ type Manager struct {
 
 func NewManager(dataDir string) *Manager {
 	dir := filepath.Join(dataDir, "rss")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	opmlPath := filepath.Join(dir, "feed.opml")
 	if e := os.Getenv("DHI_RSS_OPML_PATH"); e != "" {
@@ -130,7 +130,7 @@ func (m *Manager) saveOPML() {
 	if err != nil {
 		return
 	}
-	os.WriteFile(m.opmlPath, []byte(data), 0644)
+	_ = os.WriteFile(m.opmlPath, []byte(data), 0644)
 }
 
 // ─── Sources ───
@@ -369,7 +369,7 @@ func (m *Manager) loadEntries() []FeedEntry {
 		return nil
 	}
 	var entries []FeedEntry
-	json.Unmarshal(data, &entries)
+	_ = json.Unmarshal(data, &entries)
 	return entries
 }
 
@@ -378,7 +378,7 @@ func (m *Manager) saveEntries() {
 	if err != nil {
 		return
 	}
-	os.WriteFile(filepath.Join(m.dataDir, "entries.json"), data, 0644)
+	_ = os.WriteFile(filepath.Join(m.dataDir, "entries.json"), data, 0644)
 }
 
 // ─── Looper ───
@@ -446,11 +446,11 @@ func (m *Manager) Summarize(s summarizer, max int) string {
 				break
 			}
 		}
-		sb.WriteString(fmt.Sprintf("[Source: %s]\n", sourceName))
-		sb.WriteString(fmt.Sprintf("Title: %s\n", e.Title))
-		sb.WriteString(fmt.Sprintf("Link: %s\n", e.Link))
+		fmt.Fprintf(&sb, "[Source: %s]\n", sourceName)
+		fmt.Fprintf(&sb, "Title: %s\n", e.Title)
+		fmt.Fprintf(&sb, "Link: %s\n", e.Link)
 		if e.Description != "" {
-			sb.WriteString(fmt.Sprintf("Description: %s\n", e.Description))
+			fmt.Fprintf(&sb, "Description: %s\n", e.Description)
 		}
 		sb.WriteString("\n")
 		count++

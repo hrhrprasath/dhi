@@ -59,7 +59,7 @@ func NewManager(dataDir string, parser TimeParser) *Manager {
 		parser = &DefaultParser{}
 	}
 	dir := filepath.Join(dataDir, "tasks")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 	m := &Manager{
 		path:       filepath.Join(dir, "tasks.json"),
 		parser:     parser,
@@ -298,5 +298,5 @@ func (m *Manager) save() {
 	if err != nil {
 		return
 	}
-	os.WriteFile(m.path, data, 0644)
+	_ = os.WriteFile(m.path, data, 0644)
 }

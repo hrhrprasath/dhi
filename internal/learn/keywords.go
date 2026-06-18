@@ -69,7 +69,7 @@ func (e *Engine) BuildKeywordBlock(input string, pipelineKeywords map[string][]s
 	if len(pipelineKeywords) > 0 {
 		sb.WriteString("PIPELINE HINTS (from config):\n")
 		for pip, kws := range pipelineKeywords {
-			sb.WriteString(fmt.Sprintf("  %s: %s\n", strings.ToUpper(pip), strings.Join(kws, ", ")))
+			fmt.Fprintf(&sb, "  %s: %s\n", strings.ToUpper(pip), strings.Join(kws, ", "))
 		}
 	}
 
@@ -109,8 +109,8 @@ func (e *Engine) BuildKeywordBlock(input string, pipelineKeywords map[string][]s
 
 		sb.WriteString("LEARNED (from feedback):\n")
 		for _, a := range learned {
-			sb.WriteString(fmt.Sprintf("  \"%s\" → %s (%.0f%% success, %d uses)\n",
-				a.word, strings.ToUpper(a.pipeline), a.score, a.count))
+			fmt.Fprintf(&sb, "  \"%s\" → %s (%.0f%% success, %d uses)\n",
+				a.word, strings.ToUpper(a.pipeline), a.score, a.count)
 		}
 	}
 

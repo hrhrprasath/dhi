@@ -1,0 +1,14 @@
+version: "2"
+formatters:
+  enable:
+    - gofmt
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+issues:
+  exclude-rules:
+    - path: _test\.go
+      text: Error return value of .* is not found

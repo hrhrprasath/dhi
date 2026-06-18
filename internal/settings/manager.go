@@ -59,7 +59,7 @@ var knownContextLengths = map[string]int{
 
 func NewManager(dataDir string, client *ai.Client, cfg ai.Config) *Manager {
 	dir := filepath.Join(dataDir, "settings")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	m := &Manager{
 		dataDir:  dataDir,
@@ -92,7 +92,7 @@ func (m *Manager) FetchModels() error {
 
 	m.resolveSelection()
 
-	m.save()
+	_ = m.save()
 	return nil
 }
 
@@ -161,7 +161,7 @@ func (m *Manager) SelectModel(name string) error {
 	}
 
 	m.settings.SelectedModel = name
-	m.save()
+	_ = m.save()
 	return nil
 }
 

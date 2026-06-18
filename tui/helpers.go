@@ -53,7 +53,7 @@ func fmtURLs(urls []string) string {
 	var sb strings.Builder
 	sb.WriteString("\n\n")
 	for i, u := range urls {
-		sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, u))
+		fmt.Fprintf(&sb, "  %d. %s\n", i+1, u)
 	}
 	return sb.String()
 }
@@ -108,19 +108,19 @@ func parseInt(s string) int {
 func stripMarkdown(s string) string {
 	s = regexp.MustCompile("```[\\s\\S]*?```").ReplaceAllString(s, "")
 	s = regexp.MustCompile("`[^`]*`").ReplaceAllString(s, "")
-	s = regexp.MustCompile("\\[([^\\]]*)\\]\\(([^)]+)\\)").ReplaceAllString(s, "$1 ($2)")
-	s = regexp.MustCompile("!\\[([^\\]]*)\\]\\(([^)]+)\\)").ReplaceAllString(s, "$1 ($2)")
-	s = regexp.MustCompile("\\*\\*(.*?)\\*\\*").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
+	s = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
+	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "$1")
 	s = regexp.MustCompile("__(.*?)__").ReplaceAllString(s, "$1")
-	s = regexp.MustCompile("\\*(.*?)\\*").ReplaceAllString(s, "$1")
+	s = regexp.MustCompile(`\*(.*?)\*`).ReplaceAllString(s, "$1")
 	s = regexp.MustCompile("_(.*?)_").ReplaceAllString(s, "$1")
 	s = regexp.MustCompile("~~(.*?)~~").ReplaceAllString(s, "$1")
-	s = regexp.MustCompile("^#{1,6}\\s+").ReplaceAllString(s, "")
-	s = regexp.MustCompile("^>\\s?").ReplaceAllString(s, "")
-	s = regexp.MustCompile("^[-*+]\\s+").ReplaceAllString(s, "")
-	s = regexp.MustCompile("^\\d+\\.\\s+").ReplaceAllString(s, "")
+	s = regexp.MustCompile(`^#{1,6}\s+`).ReplaceAllString(s, "")
+	s = regexp.MustCompile(`^>\s?`).ReplaceAllString(s, "")
+	s = regexp.MustCompile(`^[-*+]\s+`).ReplaceAllString(s, "")
+	s = regexp.MustCompile(`^\d+\.\s+`).ReplaceAllString(s, "")
 	s = regexp.MustCompile("^[-*_]{3,}$").ReplaceAllString(s, "")
-	s = regexp.MustCompile("\\n{3,}").ReplaceAllString(s, "\n\n")
+	s = regexp.MustCompile(`\n{3,}`).ReplaceAllString(s, "\n\n")
 	return strings.TrimSpace(s)
 }
 

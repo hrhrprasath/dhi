@@ -24,8 +24,6 @@ type commandCenter struct {
 	slashMatches  []string
 	slashIndex    int
 	lastSubmitted string
-	lastInput     string
-	lastIntent    any
 	convView      viewport.Model
 }
 

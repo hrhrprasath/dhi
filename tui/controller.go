@@ -178,7 +178,7 @@ func (m *Model) handleConversation(t *task.Task, summaryText string, intentResul
 	}
 
 	if cur := m.topicMgr.CurrentTopic(); cur != nil {
-		m.topicMgr.AppendTurn(cur.ID, t.RawInput, response)
+		_ = m.topicMgr.AppendTurn(cur.ID, t.RawInput, response)
 	}
 
 	if m.feedback != nil {
@@ -245,7 +245,7 @@ func (m *Model) handlePipeline(t *task.Task, summaryText string, intentResult *i
 	m.logger.Info("DHI", reply)
 
 	if cur := m.topicMgr.CurrentTopic(); cur != nil {
-		m.topicMgr.AppendTurn(cur.ID, t.RawInput, reply)
+		_ = m.topicMgr.AppendTurn(cur.ID, t.RawInput, reply)
 	}
 
 	m.events <- convMsg{input: t.RawInput, response: reply}

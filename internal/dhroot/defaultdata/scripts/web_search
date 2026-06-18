@@ -28,11 +28,14 @@ echo ""
 urls=$(echo "$results" | jq -r '.[].url' | head -3)
 [ -z "$urls" ] && exit 0
 
-# Fetch each page with agent-browser (Chrome stays alive in daemon after first call).
-# Use a standard Chrome UA and wait 3s for JS to render.
+# Fetch each page in parallel with agent-browser (Chrome stays alive in daemon after first call).
+# Use a standard Chrome UA and wait 1s for JS to render.
 for url in $urls; do
-  echo "=== PAGE: $url ==="
-  AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-  agent-browser batch "open $url" "wait 3000" "get text body" 2>/dev/null | head -80
-  echo ""
+  (
+    echo "=== PAGE: $url ==="
+    AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+    agent-browser batch "open $url" "wait 1000" "get text body" 2>/dev/null | head -80
+    echo ""
+  ) &
 done
+wait

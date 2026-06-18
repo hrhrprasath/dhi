@@ -19,62 +19,6 @@ type modelPanel struct {
 	view      viewport.Model
 }
 
-func (mp *modelPanel) renderRecent(cur *settings.ModelInfo, focused bool, height int) string {
-	var sb strings.Builder
-
-	limit := 5
-	all := mp.filtered
-	if len(all) > limit {
-		all = all[:limit]
-	}
-
-	for i, mdl := range all {
-		mark := "  "
-		style := lipgloss.NewStyle().Foreground(dimColor)
-		if focused && i == mp.recentIdx {
-			mark = "▸ "
-			style = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
-		} else if cur != nil && mdl.Name == cur.Name {
-			mark = "→ "
-			style = lipgloss.NewStyle().Foreground(accentColor)
-		}
-		label := mdl.Name
-		if len(label) > 20 {
-			label = label[:17] + "..."
-		}
-		var ctxStr string
-		if mdl.ContextLen > 0 {
-			ctxStr = fmt.Sprintf("   %dK ctx", mdl.ContextLen/1024)
-		}
-		sb.WriteString(style.Render(fmt.Sprintf("%s%d. %s", mark, i+1, label)) + "\n")
-		if ctxStr != "" {
-			sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(ctxStr) + "\n")
-		}
-	}
-
-	if len(all) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(redColor).Render(" NO MODEL") + "\n")
-	}
-
-	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /model browse all"))
-
-	contentLines := strings.Count(sb.String(), "\n") + 1
-	used := 7 + 9 + 9 + 4 + 7
-	available := height - used - 2
-	if fill := available - contentLines; fill > 0 {
-		sb.WriteString(strings.Repeat("\n", fill))
-	}
-
-	style := borderStyle
-	if focused {
-		style = focusedBorderStyle
-	}
-
-	return style.Width(28).Render(
-		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" MODELS ") + "\n" + sb.String(),
-	)
-}
-
 func (mp *modelPanel) renderPopup(w int, cur *settings.ModelInfo) string {
 	help := lipgloss.NewStyle().Foreground(dimColor).Render(" ↑↓ navigate · Enter/Tab select · type to search · ESC close ")
 

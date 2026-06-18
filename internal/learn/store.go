@@ -72,7 +72,7 @@ func defaultLearningData() LearningData {
 
 func NewEngine(dataDir string) *Engine {
 	dir := filepath.Join(dataDir, "learn")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 	p := filepath.Join(dir, "_default", "learning.json")
 
 	e := &Engine{path: p, dataDir: dir}
@@ -93,7 +93,7 @@ func (e *Engine) SetModel(name string) {
 	sanitized := strings.ReplaceAll(name, "/", "_")
 	sanitized = strings.ReplaceAll(sanitized, " ", "_")
 	dir := filepath.Join(e.dataDir, sanitized)
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 	e.path = filepath.Join(dir, "learning.json")
 
 	e.data = e.load()
@@ -129,7 +129,7 @@ func (e *Engine) load() LearningData {
 func (e *Engine) save() {
 	e.data.LastUpdated = time.Now()
 	data, _ := json.MarshalIndent(e.data, "", "  ")
-	os.WriteFile(e.path, data, 0644)
+	_ = os.WriteFile(e.path, data, 0644)
 }
 
 func (e *Engine) Stats() map[string]*PipelineStats {

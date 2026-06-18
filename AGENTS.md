@@ -46,9 +46,8 @@ go test -v ./...                 # Verbose output
 
 ### Linting and Formatting
 ```bash
-go fmt ./...         # Format all Go files
-go vet ./...         # Static analysis
-golangci-lint run    # Full lint (if configured)
+make fmt     # go fmt ./...
+make lint    # golangci-lint run (uses .golangci.yml)
 ```
 
 ---

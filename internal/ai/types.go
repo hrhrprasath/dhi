@@ -35,5 +35,3 @@ type ModelList struct {
 		ID string `json:"id"`
 	} `json:"data"`
 }
-
-

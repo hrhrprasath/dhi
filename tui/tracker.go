@@ -24,18 +24,14 @@ func (t *trackerPanel) render(todoMgr *todo.Manager, taskMgr *task.Manager, rssM
 	activeScheds := taskMgr.CountByStatus(task.StatusWaiting)
 	rssCount := rssMgr.EntryCount()
 
-	sb.WriteString(fmt.Sprintf("   Todos:  %d pending\n", activeTodos))
-	sb.WriteString(fmt.Sprintf("   Sched:  %d upcoming\n", activeScheds))
-	sb.WriteString(fmt.Sprintf("   RSS:    %d entries\n", rssCount))
+	fmt.Fprintf(&sb, "   Todos:  %d pending\n", activeTodos)
+	fmt.Fprintf(&sb, "   Sched:  %d upcoming\n", activeScheds)
+	fmt.Fprintf(&sb, "   RSS:    %d entries\n", rssCount)
 	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /todo  /schedule  /rss"))
 
 	return borderStyle.Width(28).Render(
 		lipgloss.NewStyle().Bold(true).Foreground(accentColor).Render(" TRACKER ") + "\n" + sb.String(),
 	)
-}
-
-func (t *trackerPanel) height() int {
-	return 6
 }
 
 // ─── Todo Panel (popup) ───

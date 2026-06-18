@@ -160,7 +160,7 @@ func (p *DefaultParser) parseWeekday(m []string, now time.Time, isWeekday bool) 
 
 func (p *DefaultParser) parseNext(s string, now time.Time) (*Schedule, error) {
 	s = strings.ToLower(s)
-	var n int = 1
+	var n = 1
 	if strings.Contains(s, "2 ") || strings.Contains(s, "two ") {
 		n = 2
 	}

@@ -70,7 +70,7 @@ func NewLogger() *Logger {
 
 func (l *Logger) SetFile(path string) error {
 	dir := filepath.Dir(path)
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -100,7 +100,7 @@ func (l *Logger) Log(level LogLevel, component, message string) {
 	}
 
 	if l.file != nil {
-		fmt.Fprintf(l.file, "[%s][%s] %s\n", entry.Timestamp, component, level.String())
+		_, _ = fmt.Fprintf(l.file, "[%s][%s] %s\n", entry.Timestamp, component, level.String())
 	}
 
 	if level >= WarnLevel {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 
 	"dhi_harness/internal/ai"
@@ -72,6 +73,13 @@ func main() {
 	sysSvc := services.NewSystemService()
 	todoMgr := todo.NewManager(dhroot.DataDir())
 	rssMgr := rss.NewManager(dhroot.DataDir())
+
+	// Pre-warm agent-browser daemon so first search isn't slowed by Chrome cold start
+	go func() {
+		if _, err := osexec.LookPath("agent-browser"); err == nil {
+			osexec.Command("bash", "-c", "agent-browser batch 'open about:blank' 'wait 100' 2>/dev/null").Run()
+		}
+	}()
 
 	model := tui.NewModel(logger, taskMgr, router, exec, topicMgr, sysSvc, todoMgr, rssMgr, learningEngine, settingsMgr)
 

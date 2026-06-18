@@ -25,7 +25,7 @@ type Manager struct {
 
 func NewManager(dataDir string) *Manager {
 	dir := filepath.Join(dataDir, "todos")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 	return &Manager{
 		path: filepath.Join(dir, "todos.json"),
 	}
@@ -37,13 +37,13 @@ func (m *Manager) load() List {
 		return List{}
 	}
 	var l List
-	json.Unmarshal(data, &l)
+	_ = json.Unmarshal(data, &l)
 	return l
 }
 
 func (m *Manager) save(l *List) {
 	data, _ := json.MarshalIndent(l, "", "  ")
-	os.WriteFile(m.path, data, 0644)
+	_ = os.WriteFile(m.path, data, 0644)
 }
 
 func (m *Manager) Add(text string) string {

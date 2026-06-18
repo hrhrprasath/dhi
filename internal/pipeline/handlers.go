@@ -91,7 +91,7 @@ func (h *Handlers) handleSchedule(action, when, command, scheduleID, schedulesJS
 			if t.IntervalSec > 0 {
 				recur = " (recurring)"
 			}
-			sb.WriteString(fmt.Sprintf("  %s: \"%s\" → %s%s\n", t.ID[:8], t.RawInput, due, recur))
+			fmt.Fprintf(&sb, "  %s: \"%s\" → %s%s\n", t.ID[:8], t.RawInput, due, recur)
 		}
 		return sb.String()
 

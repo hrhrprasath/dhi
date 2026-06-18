@@ -223,9 +223,9 @@ func (r *Router) HealthCheck() bool {
 
 func (r *Router) savePrompt(p string) {
 	dir := filepath.Join(r.dataDir, "intent")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 	filename := time.Now().Format("2006-01-02T15-04-05") + ".md"
-	os.WriteFile(filepath.Join(dir, filename), []byte("# Intent Prompt\n\n"+p), 0644)
+	_ = os.WriteFile(filepath.Join(dir, filename), []byte("# Intent Prompt\n\n"+p), 0644)
 }
 
 func parseJSON(raw string) (*ParsedIntent, error) {

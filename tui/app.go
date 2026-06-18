@@ -377,7 +377,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.eventPoller()
 			}
 		}
-		m.pipeline.entries = append(m.pipeline.entries, pipelineEntry{name: msg.name, status: msg.status})
+		m.pipeline.entries = append(m.pipeline.entries, pipelineEntry(msg))
 		return m, m.eventPoller()
 
 	case spinner.TickMsg:
@@ -511,15 +511,15 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if m.todo.popupOpen || m.schedule.popupOpen {
-		switch {
-		case msg.Code == 'r' || msg.Code == 'R':
+		switch msg.Code {
+		case 'r', 'R':
 			if m.todo.popupOpen {
 				return m.todoRemoveSelected()
 			}
 			if m.schedule.popupOpen {
 				return m.scheduleRemoveSelected()
 			}
-		case msg.Code == 'd' || msg.Code == 'D':
+		case 'd', 'D':
 			if m.todo.popupOpen {
 				return m.todoDoneSelected()
 			}
@@ -530,14 +530,14 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if m.rss.popupOpen {
-		switch {
-		case msg.Code == tea.KeyEnter:
+		switch msg.Code {
+		case tea.KeyEnter:
 			return m.rssEnterSelected()
-		case msg.Code == 'b' || msg.Code == 'B':
+		case 'b', 'B':
 			return m.rssToggleBookmark()
-		case msg.Code == 'r' || msg.Code == 'R':
+		case 'r', 'R':
 			return m.rssRemoveSource()
-		case msg.Code == 's' || msg.Code == 'S':
+		case 's', 'S':
 			return m.rssRefreshSummary()
 		}
 	}
@@ -914,7 +914,8 @@ func (m *Model) handlePageDown() tea.Cmd {
 // ─── Mouse Handling ───
 
 func (m *Model) handleMouseWheel(mouse tea.Mouse) {
-	if mouse.Button == tea.MouseWheelUp {
+	switch mouse.Button {
+	case tea.MouseWheelUp:
 		switch m.focused {
 		case focusLogs:
 			m.log.view.ScrollUp(3)
@@ -923,7 +924,7 @@ func (m *Model) handleMouseWheel(mouse tea.Mouse) {
 		case focusTopics:
 			m.topic.view.ScrollUp(3)
 		}
-	} else if mouse.Button == tea.MouseWheelDown {
+	case tea.MouseWheelDown:
 		switch m.focused {
 		case focusLogs:
 			m.log.view.ScrollDown(3)
@@ -1153,9 +1154,8 @@ func (m *Model) handleNewTopic() {
 	m.cc.setConversationsFromTurns(nil)
 	m.cc.convView.GotoBottom()
 
-	msg := fmt.Sprintf("Started new topic")
-	m.logger.Info("TOPIC", msg)
-	m.events <- logMsg{message: fmt.Sprintf("[TOPIC][INFO] %s", msg)}
+	m.logger.Info("TOPIC", "Started new topic")
+	m.events <- logMsg{message: "[TOPIC][INFO] Started new topic"}
 }
 
 func (m *Model) handleForkTopic() {
@@ -1378,11 +1378,10 @@ func (m *Model) toggleRssPopup() {
 }
 
 func (m *Model) rssEnterSelected() tea.Cmd {
-	if m.rss.tabIdx == 0 {
+	switch m.rss.tabIdx {
+	case 0:
 		return nil
-	}
-	var entry *rss.FeedEntry
-	if m.rss.tabIdx == 1 {
+	case 1:
 		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.rawItems) {
 			return nil
 		}
@@ -1390,26 +1389,30 @@ func (m *Model) rssEnterSelected() tea.Cmd {
 		if item.isSource {
 			return nil
 		}
-		entry = &item.entry
-	} else if m.rss.tabIdx == 2 {
+		entry := item.entry
+		if entry.Link == "" {
+			return nil
+		}
+		m.handleOpenURL(entry.Link)
+	case 2:
 		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.bookmarkItems) {
 			return nil
 		}
-		entry = &m.rss.bookmarkItems[m.rss.selIdx]
+		entry := m.rss.bookmarkItems[m.rss.selIdx]
+		if entry.Link == "" {
+			return nil
+		}
+		m.handleOpenURL(entry.Link)
 	}
-	if entry == nil || entry.Link == "" {
-		return nil
-	}
-	m.handleOpenURL(entry.Link)
 	return nil
 }
 
 func (m *Model) rssToggleBookmark() tea.Cmd {
-	if m.rss.tabIdx == 0 {
-		return nil
-	}
 	var entryID string
-	if m.rss.tabIdx == 1 {
+	switch m.rss.tabIdx {
+	case 0:
+		return nil
+	case 1:
 		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.rawItems) {
 			return nil
 		}
@@ -1418,11 +1421,13 @@ func (m *Model) rssToggleBookmark() tea.Cmd {
 			return nil
 		}
 		entryID = item.entry.ID
-	} else if m.rss.tabIdx == 2 {
+	case 2:
 		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.bookmarkItems) {
 			return nil
 		}
 		entryID = m.rss.bookmarkItems[m.rss.selIdx].ID
+	default:
+		return nil
 	}
 	if entryID == "" {
 		return nil

@@ -45,14 +45,14 @@ type Manager struct {
 
 func NewManager(dataDir string) *Manager {
 	dir := filepath.Join(dataDir, "topics")
-	os.MkdirAll(dir, 0755)
+	_ = os.MkdirAll(dir, 0755)
 
 	m := &Manager{
 		dataDir: dataDir,
 		list:    &TopicList{},
 	}
 
-	m.loadTopics()
+	_ = m.loadTopics()
 	if len(m.list.Topics) == 0 {
 		m.migrateOrCreate()
 	}
@@ -87,11 +87,11 @@ func (m *Manager) migrateOrCreate() {
 			m.list.Current = id
 
 			td := TopicData{Topic: t, Turns: old.Turns}
-			m.writeTopicJSON(&td)
-			m.writeTopicMD(&td)
-			m.saveTopics()
+			_ = m.writeTopicJSON(&td)
+			_ = m.writeTopicMD(&td)
+			_ = m.saveTopics()
 
-			os.Rename(summaryPath, summaryPath+".migrated")
+			_ = os.Rename(summaryPath, summaryPath+".migrated")
 			return
 		}
 	}
@@ -110,11 +110,11 @@ func (m *Manager) createDefault() {
 	}
 	m.list.Topics = []Topic{t}
 	m.list.Current = id
-	m.saveTopics()
+	_ = m.saveTopics()
 
 	td := TopicData{Topic: t}
-	m.writeTopicJSON(&td)
-	m.writeTopicMD(&td)
+	_ = m.writeTopicJSON(&td)
+	_ = m.writeTopicMD(&td)
 }
 
 func (m *Manager) topicsPath() string {
@@ -181,11 +181,11 @@ func (m *Manager) CreateTopic(title string) *Topic {
 	m.list.Topics = append(m.list.Topics, t)
 	m.list.Previos = oldCurrent
 	m.list.Current = id
-	m.saveTopics()
+	_ = m.saveTopics()
 
 	td := TopicData{Topic: t}
-	m.writeTopicJSON(&td)
-	m.writeTopicMD(&td)
+	_ = m.writeTopicJSON(&td)
+	_ = m.writeTopicMD(&td)
 
 	return &t
 }
@@ -210,11 +210,11 @@ func (m *Manager) ForkTopic(title string) *Topic {
 	m.list.Topics = append(m.list.Topics, t)
 	m.list.Previos = oldCurrent
 	m.list.Current = id
-	m.saveTopics()
+	_ = m.saveTopics()
 
 	td := TopicData{Topic: t, Turns: currentTurns}
-	m.writeTopicJSON(&td)
-	m.writeTopicMD(&td)
+	_ = m.writeTopicJSON(&td)
+	_ = m.writeTopicMD(&td)
 
 	return &t
 }
@@ -230,7 +230,7 @@ func (m *Manager) ResumeTopic() *Topic {
 	oldCurrent := m.list.Current
 	m.list.Current = m.list.Previos
 	m.list.Previos = oldCurrent
-	m.saveTopics()
+	_ = m.saveTopics()
 
 	return m.currentTopic()
 }
@@ -244,7 +244,7 @@ func (m *Manager) SwitchToTopic(id string) bool {
 			if m.list.Current != id {
 				m.list.Previos = m.list.Current
 				m.list.Current = id
-				m.saveTopics()
+				_ = m.saveTopics()
 			}
 			return true
 		}
@@ -277,9 +277,9 @@ func (m *Manager) AppendTurn(id, input, response string) error {
 		}
 	}
 
-	m.saveTopics()
-	m.writeTopicJSON(td)
-	m.writeTopicMD(td)
+	_ = m.saveTopics()
+	_ = m.writeTopicJSON(td)
+	_ = m.writeTopicMD(td)
 
 	return nil
 }
@@ -292,12 +292,12 @@ func (m *Manager) UpdateTitle(id, title string) {
 		if m.list.Topics[i].ID == id {
 			m.list.Topics[i].Title = title
 			m.list.Topics[i].UpdatedAt = time.Now().Format(time.RFC3339)
-			m.saveTopics()
+			_ = m.saveTopics()
 			td := m.loadTopicData(id)
 			td.Title = title
 			td.UpdatedAt = m.list.Topics[i].UpdatedAt
-			m.writeTopicJSON(td)
-			m.writeTopicMD(td)
+			_ = m.writeTopicJSON(td)
+			_ = m.writeTopicMD(td)
 			return
 		}
 	}
@@ -336,13 +336,13 @@ func (m *Manager) writeTopicJSON(td *TopicData) error {
 
 func (m *Manager) writeTopicMD(td *TopicData) error {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# Topic: %s\n", td.Title))
-	sb.WriteString(fmt.Sprintf("Created: %s\n", td.CreatedAt))
-	sb.WriteString(fmt.Sprintf("Updated: %s\n\n", td.UpdatedAt))
+	fmt.Fprintf(&sb, "# Topic: %s\n", td.Title)
+	fmt.Fprintf(&sb, "Created: %s\n", td.CreatedAt)
+	fmt.Fprintf(&sb, "Updated: %s\n\n", td.UpdatedAt)
 
 	for _, t := range td.Turns {
-		sb.WriteString(fmt.Sprintf("## User: %s\n", t.Input))
-		sb.WriteString(fmt.Sprintf("## DHI: %s\n\n", t.Response))
+		fmt.Fprintf(&sb, "## User: %s\n", t.Input)
+		fmt.Fprintf(&sb, "## DHI: %s\n\n", t.Response)
 		sb.WriteString("---\n\n")
 	}
 
@@ -363,7 +363,7 @@ func (m *Manager) FormatForPrompt() string {
 	}
 	for i := start; i < len(td.Turns); i++ {
 		t := td.Turns[i]
-		sb.WriteString(fmt.Sprintf("[USER] %s\n[ASSISTANT] %s\n\n", t.Input, t.Response))
+		fmt.Fprintf(&sb, "[USER] %s\n[ASSISTANT] %s\n\n", t.Input, t.Response)
 	}
 
 	return sb.String()

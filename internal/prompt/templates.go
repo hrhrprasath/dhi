@@ -39,14 +39,14 @@ func BuildSchema(weightLines map[string]string, pipelinePath string) string {
 	var sb strings.Builder
 	for _, p := range pipelines {
 		event := fmt.Sprintf("EXECUTE_%s", strings.ToUpper(p.Name))
-		sb.WriteString(fmt.Sprintf("event: %s\ndescription: %s\n", event, p.Description))
+		fmt.Fprintf(&sb, "event: %s\ndescription: %s\n", event, p.Description)
 		if wl, ok := weightLines[strings.ToLower(p.Name)]; ok && wl != "" {
 			sb.WriteString(wl + "\n")
 		} else {
-			sb.WriteString(fmt.Sprintf("weight: %.1f (higher = prioritize when ambiguous)\n", p.Weight))
+			fmt.Fprintf(&sb, "weight: %.1f (higher = prioritize when ambiguous)\n", p.Weight)
 		}
 		if len(p.Keywords) > 0 {
-			sb.WriteString(fmt.Sprintf("keywords: %s\n", strings.Join(p.Keywords, ", ")))
+			fmt.Fprintf(&sb, "keywords: %s\n", strings.Join(p.Keywords, ", "))
 		}
 
 		var params []string
@@ -66,9 +66,9 @@ func BuildSchema(weightLines map[string]string, pipelinePath string) string {
 		if len(params) == 0 {
 			sb.WriteString("params: none\n")
 		} else {
-			sb.WriteString(fmt.Sprintf("params: %s\n", strings.Join(params, ", ")))
+			fmt.Fprintf(&sb, "params: %s\n", strings.Join(params, ", "))
 		}
-		sb.WriteString(fmt.Sprintf("example: %s\n\n", buildExample(p)))
+		fmt.Fprintf(&sb, "example: %s\n\n", buildExample(p))
 	}
 	return sb.String()
 }

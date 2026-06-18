@@ -89,8 +89,8 @@ func (e *Engine) BuildCalibrationBlock() string {
 	var sb strings.Builder
 	sb.WriteString("\nCALIBRATION DATA:\n")
 	for _, e := range entries {
-		sb.WriteString(fmt.Sprintf("- EXECUTE_%s: %.0f%% accuracy (%d/%d calls) | trend: %s\n",
-			e.name, e.accuracy*100, int(e.accuracy*float64(e.calls)), e.calls, e.trend))
+		fmt.Fprintf(&sb, "- EXECUTE_%s: %.0f%% accuracy (%d/%d calls) | trend: %s\n",
+			e.name, e.accuracy*100, int(e.accuracy*float64(e.calls)), e.calls, e.trend)
 	}
 
 	return sb.String()

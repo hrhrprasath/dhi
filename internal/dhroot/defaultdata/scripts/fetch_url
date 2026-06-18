@@ -6,6 +6,6 @@ if ! command -v agent-browser &>/dev/null; then
 fi
 
 # Keep browser alive in daemon for fast subsequent calls.
-# Use a standard Chrome UA and wait 3s for JS to render.
+# Use a standard Chrome UA and wait 1s for JS to render.
 AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-agent-browser batch "open $*" "wait 3000" "get text body" 2>/dev/null
+agent-browser batch "open $*" "wait 1000" "get text body" 2>/dev/null
