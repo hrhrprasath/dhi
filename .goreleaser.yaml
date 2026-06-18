@@ -1,0 +1,72 @@
+version: 2
+
+project_name: dhi
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/dhi
+    binary: dhi
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: linux
+        goarch: arm64
+
+archives:
+  - format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: darwin
+        format: zip
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: "^feat"
+      order: 0
+    - title: Bug fixes
+      regexp: "^fix"
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: anomalyco
+    name: dhi
+  header: |
+    ## DHI Harness {{ .Version }}
+
+    ### What's Changed
+
+  footer: |
+    ---
+    *This release was automatically generated.*

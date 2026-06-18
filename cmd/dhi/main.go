@@ -24,6 +24,8 @@ import (
 	"charm.land/bubbletea/v2"
 )
 
+var version = "dev"
+
 func main() {
 	if err := dhroot.EnsureDefaults(); err != nil {
 		fmt.Fprintf(os.Stderr, "Init error: %v\n", err)
@@ -38,7 +40,7 @@ func main() {
 
 	logger := services.NewLogger()
 
-	logger.Info("SYSTEM", fmt.Sprintf("DHI Harness v%s booting...", "0.1.0"))
+	logger.Info("SYSTEM", fmt.Sprintf("DHI Harness v%s booting...", version))
 	logger.Info("CONFIG", fmt.Sprintf("AI provider: %s (%s)", cfg.AI.Provider, cfg.AI.BaseURL))
 
 	if err := logger.SetFile(filepath.Join(dhroot.DataDir(), "dhi.log")); err != nil {

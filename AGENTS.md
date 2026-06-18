@@ -123,7 +123,36 @@ StatusWaiting    // scheduled, waiting for time
 - Do NOT add comments unless explicitly requested
 - Code should be self-documenting
 
-### 3.8 Safety and Security
+### 3.9 Commit Conventions
+
+This project follows [Conventional Commits](https://www.conventionalcommits.org/) for automatic changelog generation and semver versioning.
+
+**Format:**
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+- **type** — one of: `feat` (new feature, minor bump), `fix` (bug fix, patch bump), `chore`, `docs`, `style`, `refactor`, `perf`, `test`, `ci`, `build`
+- **scope** — optional, which package/area (e.g. `pipeline`, `tui`, `intent`, `task`, `rss`)
+- **breaking change** — append `!` after type/scope (e.g. `feat!:`), or add `BREAKING CHANGE:` in footer (major bump)
+
+**Examples:**
+```
+feat(pipeline): add summarization support
+fix(tui): handle empty RSS feed gracefully
+docs: update README with install instructions
+ci: add GitHub Actions release workflow
+feat!: rewrite task scheduler API
+```
+
+Commit messages are used by `goreleaser` to auto-generate release notes grouped by feature / bug fix / others.
+
+---
+
+### 3.10 Safety and Security
 
 - Never log secrets, keys, or credentials
 - Use `.env` files for sensitive configuration (never commit)
