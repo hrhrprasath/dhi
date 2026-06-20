@@ -232,6 +232,7 @@ type rssPanel struct {
 	loading       bool
 	loaded        bool
 	lastFetch     time.Time
+	isDark        bool
 }
 
 func (rp *rssPanel) loadData(mgr *rss.Manager) {
@@ -341,14 +342,7 @@ func (rp *rssPanel) renderAITab() string {
 		return lipgloss.NewStyle().Foreground(dimColor).Render("No entries. Add feeds with /rss add <url>") + "\n"
 	}
 
-	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Foreground(accentColor).Bold(true).Render("AI Curation\n\n"))
-
-	lines := strings.Split(rp.aiSummary, "\n")
-	for _, line := range lines {
-		sb.WriteString(line + "\n")
-	}
-	return sb.String()
+	return renderMarkdown(rp.aiSummary, rp.view.Width(), rp.isDark)
 }
 
 func (rp *rssPanel) renderRawTab() string {

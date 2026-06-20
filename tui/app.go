@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"strconv"
@@ -78,6 +79,8 @@ type Model struct {
 	schedule schedulePanel
 	rss      rssPanel
 	welcome  welcomePanel
+
+	isDarkBg bool
 }
 
 func NewModel(logger *services.Logger, tm *task.Manager,
@@ -142,6 +145,8 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 		statusPipelines = append(statusPipelines, pipelineEntry{name: p, status: "IDLE"})
 	}
 
+	isDarkBg := lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+
 	m := &Model{
 		logger:      logger,
 		taskMgr:     tm,
@@ -199,7 +204,8 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 			view: sv,
 		},
 		rss: rssPanel{
-			view: rv,
+			view:   rv,
+			isDark: isDarkBg,
 		},
 		welcome: welcomePanel{
 			show:      true,
@@ -228,11 +234,13 @@ func NewModel(logger *services.Logger, tm *task.Manager,
 		turns := m.topicMgr.LoadTopicTurns(cur.ID)
 		convTurns := make([]conversationEntry, len(turns))
 		for i, t := range turns {
-			convTurns[i] = conversationEntry{input: t.Input, response: stripMarkdown(t.Response)}
+			convTurns[i] = conversationEntry{input: t.Input, response: t.Response}
 		}
 		m.cc.setConversationsFromTurns(convTurns)
 		m.cc.convView.GotoBottom()
 	}
+
+	m.isDarkBg = isDarkBg
 
 	return m
 }
@@ -353,10 +361,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.eventPoller()
 
 	case convMsg:
-		if !m.cc.setResponse(msg.input, stripMarkdown(msg.response)) {
+		if !m.cc.setResponse(msg.input, msg.response) {
 			m.cc.conversations = append(m.cc.conversations, conversationEntry{
 				input:    msg.input,
-				response: stripMarkdown(msg.response),
+				response: msg.response,
 			})
 		}
 		m.cc.convView.GotoBottom()
@@ -375,7 +383,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case convCompleteMsg:
 		for i := len(m.cc.conversations) - 1; i >= 0; i-- {
 			if m.cc.conversations[i].input == msg.input && m.cc.conversations[i].thinking {
-				m.cc.conversations[i].response = stripMarkdown(msg.response)
+				m.cc.conversations[i].response = msg.response
 				m.cc.conversations[i].thinking = false
 				m.cc.thinking--
 				m.cc.convView.GotoBottom()
@@ -491,7 +499,7 @@ func (m *Model) render() string {
 		if cur := m.topicMgr.CurrentTopic(); cur != nil {
 			topicTitle = cur.Title
 		}
-		mainBlock = m.cc.renderConv(rw, m.focused == focusConv, topicTitle)
+		mainBlock = m.cc.renderConv(rw, m.focused == focusConv, topicTitle, m.isDarkBg)
 	}
 
 	modelName := ""
@@ -1233,7 +1241,7 @@ func (m *Model) handleForkTopic() {
 	turns := m.topicMgr.LoadTopicTurns(t.ID)
 	convTurns := make([]conversationEntry, len(turns))
 	for i, turn := range turns {
-		convTurns[i] = conversationEntry{input: turn.Input, response: stripMarkdown(turn.Response)}
+		convTurns[i] = conversationEntry{input: turn.Input, response: turn.Response}
 	}
 	m.cc.setConversationsFromTurns(convTurns)
 	m.cc.convView.GotoBottom()
@@ -1255,7 +1263,7 @@ func (m *Model) handleResumeTopic() {
 	turns := m.topicMgr.LoadTopicTurns(t.ID)
 	convTurns := make([]conversationEntry, len(turns))
 	for i, turn := range turns {
-		convTurns[i] = conversationEntry{input: turn.Input, response: stripMarkdown(turn.Response)}
+		convTurns[i] = conversationEntry{input: turn.Input, response: turn.Response}
 	}
 	m.cc.setConversationsFromTurns(convTurns)
 	m.cc.convView.GotoBottom()
@@ -1277,7 +1285,7 @@ func (m *Model) handleSwitchTopic(arg string) {
 		turns := m.topicMgr.LoadTopicTurns(cur.ID)
 		convTurns := make([]conversationEntry, len(turns))
 		for i, turn := range turns {
-			convTurns[i] = conversationEntry{input: turn.Input, response: stripMarkdown(turn.Response)}
+			convTurns[i] = conversationEntry{input: turn.Input, response: turn.Response}
 		}
 		m.cc.setConversationsFromTurns(convTurns)
 		m.cc.convView.GotoBottom()

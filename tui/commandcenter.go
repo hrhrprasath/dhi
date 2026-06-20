@@ -27,7 +27,7 @@ type commandCenter struct {
 	convView      viewport.Model
 }
 
-func (cc *commandCenter) renderConv(w int, focused bool, topicTitle string) string {
+func (cc *commandCenter) renderConv(w int, focused bool, topicTitle string, isDark bool) string {
 	style := borderStyle
 	if focused {
 		style = focusedBorderStyle
@@ -50,9 +50,9 @@ func (cc *commandCenter) renderConv(w int, focused bool, topicTitle string) stri
 			sb.WriteString("\n\nDHI: ")
 			response := c.response
 			if !c.thinking {
-				response = linkify(response)
+				response = renderMarkdown(c.response, w-5, isDark)
 			}
-			sb.WriteString(wrap.Render(response))
+			sb.WriteString(response)
 			sb.WriteString("\n\n")
 			sb.WriteString(strings.Repeat("─", w-2) + "\n\n")
 		}

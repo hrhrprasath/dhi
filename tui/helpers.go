@@ -5,6 +5,9 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/ansi"
 )
 
 // OSC 8 hyperlink escape sequences.
@@ -16,18 +19,6 @@ const (
 
 func hyperlink(url, text string) string {
 	return osc8Start + url + osc8Sep + text + osc8End
-}
-
-// linkify finds bare URLs and wraps them in clickable OSC 8 hyperlinks.
-func linkify(s string) string {
-	re := regexp.MustCompile(`https?://[^\s<>"']+`)
-	return re.ReplaceAllStringFunc(s, func(url string) string {
-		display := url
-		if len(display) > 80 {
-			display = display[:77] + "..."
-		}
-		return hyperlink(url, display)
-	})
 }
 
 // extractURLs extracts all http/https URLs from a string.
@@ -105,23 +96,318 @@ func parseInt(s string) int {
 	return n
 }
 
-func stripMarkdown(s string) string {
-	s = regexp.MustCompile("```[\\s\\S]*?```").ReplaceAllString(s, "")
-	s = regexp.MustCompile("`[^`]*`").ReplaceAllString(s, "")
-	s = regexp.MustCompile(`!\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
-	s = regexp.MustCompile(`\[([^\]]*)\]\(([^)]+)\)`).ReplaceAllString(s, "$1 ($2)")
-	s = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(s, "$1")
-	s = regexp.MustCompile("__(.*?)__").ReplaceAllString(s, "$1")
-	s = regexp.MustCompile(`\*(.*?)\*`).ReplaceAllString(s, "$1")
-	s = regexp.MustCompile("_(.*?)_").ReplaceAllString(s, "$1")
-	s = regexp.MustCompile("~~(.*?)~~").ReplaceAllString(s, "$1")
-	s = regexp.MustCompile(`^#{1,6}\s+`).ReplaceAllString(s, "")
-	s = regexp.MustCompile(`^>\s?`).ReplaceAllString(s, "")
-	s = regexp.MustCompile(`^[-*+]\s+`).ReplaceAllString(s, "")
-	s = regexp.MustCompile(`^\d+\.\s+`).ReplaceAllString(s, "")
-	s = regexp.MustCompile("^[-*_]{3,}$").ReplaceAllString(s, "")
-	s = regexp.MustCompile(`\n{3,}`).ReplaceAllString(s, "\n\n")
-	return strings.TrimSpace(s)
+func strPtr(s string) *string { return &s }
+func boolPtr(b bool) *bool    { return &b }
+
+func dhiDarkStyle() ansi.StyleConfig {
+	accent := "#FFA500"
+	dim := "#888888"
+	green := "#00FF00"
+	border := "#444444"
+
+	return ansi.StyleConfig{
+		Document: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				BlockPrefix: "\n",
+				BlockSuffix: "\n",
+				Color:       strPtr("#F0F0F0"),
+			},
+			Margin: uintPtr(2),
+		},
+		BlockQuote: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  strPtr(dim),
+				Italic: boolPtr(true),
+			},
+			Indent:      uintPtr(1),
+			IndentToken: strPtr("┃ "),
+		},
+		Paragraph: ansi.StyleBlock{},
+		List: ansi.StyleList{
+			LevelIndent: 2,
+		},
+		Heading: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				BlockSuffix: "\n",
+				Color:       strPtr(accent),
+				Bold:        boolPtr(true),
+			},
+		},
+		H1: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix:          "◆ ",
+				Suffix:          " ",
+				Color:           strPtr("#FFFFFF"),
+				BackgroundColor: strPtr(accent),
+				Bold:            boolPtr(true),
+			},
+		},
+		H2: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "▪ ",
+				Color:  strPtr(accent),
+				Bold:   boolPtr(true),
+			},
+		},
+		H3: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "▸ ",
+				Color:  strPtr(accent),
+			},
+		},
+		H4: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "▹ ",
+				Color:  strPtr(dim),
+			},
+		},
+		H5: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "• ",
+				Color:  strPtr(dim),
+				Italic: boolPtr(true),
+			},
+		},
+		H6: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "– ",
+				Color:  strPtr(dim),
+				Italic: boolPtr(true),
+				Faint:  boolPtr(true),
+			},
+		},
+		Strikethrough: ansi.StylePrimitive{
+			CrossedOut: boolPtr(true),
+		},
+		Emph: ansi.StylePrimitive{
+			Italic: boolPtr(true),
+		},
+		Strong: ansi.StylePrimitive{
+			Bold: boolPtr(true),
+		},
+		HorizontalRule: ansi.StylePrimitive{
+			Color:  strPtr(border),
+			Format: "\n" + strings.Repeat("━", 40) + "\n",
+		},
+		Item: ansi.StylePrimitive{
+			BlockPrefix: "• ",
+		},
+		Enumeration: ansi.StylePrimitive{
+			BlockPrefix: ". ",
+		},
+		Task: ansi.StyleTask{
+			Ticked:   "[✓] ",
+			Unticked: "[ ] ",
+		},
+		ImageText: ansi.StylePrimitive{
+			Format: "🖼 {{.text}}",
+		},
+		Link: ansi.StylePrimitive{
+			Color:     strPtr(accent),
+			Underline: boolPtr(true),
+		},
+		LinkText: ansi.StylePrimitive{
+			Color: strPtr("#FFFFFF"),
+			Bold:  boolPtr(true),
+		},
+		Image: ansi.StylePrimitive{
+			Color:     strPtr(dim),
+			Underline: boolPtr(true),
+		},
+		Code: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:           strPtr(green),
+				BackgroundColor: strPtr("#1A1A1A"),
+			},
+		},
+		CodeBlock: ansi.StyleCodeBlock{
+			StyleBlock: ansi.StyleBlock{
+				StylePrimitive: ansi.StylePrimitive{
+					Color:           strPtr("#E0E0E0"),
+					BackgroundColor: strPtr("#121212"),
+				},
+				Margin: uintPtr(2),
+			},
+		},
+		Table: ansi.StyleTable{
+			CenterSeparator: strPtr("┼"),
+			ColumnSeparator: strPtr("│"),
+			RowSeparator:    strPtr("─"),
+		},
+		DefinitionDescription: ansi.StylePrimitive{
+			BlockPrefix: "\n  → ",
+		},
+	}
+}
+
+func dhiLightStyle() ansi.StyleConfig {
+	accent := "#FFA500"
+	dim := "#666666"
+	border := "#CCCCCC"
+
+	return ansi.StyleConfig{
+		Document: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				BlockPrefix: "\n",
+				BlockSuffix: "\n",
+				Color:       strPtr("#333333"),
+			},
+			Margin: uintPtr(2),
+		},
+		BlockQuote: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:  strPtr(dim),
+				Italic: boolPtr(true),
+			},
+			Indent:      uintPtr(1),
+			IndentToken: strPtr("┃ "),
+		},
+		Paragraph: ansi.StyleBlock{},
+		List: ansi.StyleList{
+			LevelIndent: 2,
+		},
+		Heading: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				BlockSuffix: "\n",
+				Color:       strPtr(accent),
+				Bold:        boolPtr(true),
+			},
+		},
+		H1: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix:          "◆ ",
+				Suffix:          " ",
+				Color:           strPtr("#FFFFFF"),
+				BackgroundColor: strPtr(accent),
+				Bold:            boolPtr(true),
+			},
+		},
+		H2: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "▪ ",
+				Color:  strPtr(accent),
+				Bold:   boolPtr(true),
+			},
+		},
+		H3: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "▸ ",
+				Color:  strPtr(accent),
+			},
+		},
+		H4: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "▹ ",
+				Color:  strPtr(dim),
+			},
+		},
+		H5: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "• ",
+				Color:  strPtr(dim),
+				Italic: boolPtr(true),
+			},
+		},
+		H6: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Prefix: "– ",
+				Color:  strPtr(dim),
+				Italic: boolPtr(true),
+				Faint:  boolPtr(true),
+			},
+		},
+		Strikethrough: ansi.StylePrimitive{
+			CrossedOut: boolPtr(true),
+		},
+		Emph: ansi.StylePrimitive{
+			Italic: boolPtr(true),
+		},
+		Strong: ansi.StylePrimitive{
+			Bold: boolPtr(true),
+		},
+		HorizontalRule: ansi.StylePrimitive{
+			Color:  strPtr(border),
+			Format: "\n" + strings.Repeat("━", 40) + "\n",
+		},
+		Item: ansi.StylePrimitive{
+			BlockPrefix: "• ",
+		},
+		Enumeration: ansi.StylePrimitive{
+			BlockPrefix: ". ",
+		},
+		Task: ansi.StyleTask{
+			Ticked:   "[✓] ",
+			Unticked: "[ ] ",
+		},
+		ImageText: ansi.StylePrimitive{
+			Format: "🖼 {{.text}}",
+		},
+		Link: ansi.StylePrimitive{
+			Color:     strPtr(accent),
+			Underline: boolPtr(true),
+		},
+		LinkText: ansi.StylePrimitive{
+			Color: strPtr("#333333"),
+			Bold:  boolPtr(true),
+		},
+		Image: ansi.StylePrimitive{
+			Color:     strPtr(dim),
+			Underline: boolPtr(true),
+		},
+		Code: ansi.StyleBlock{
+			StylePrimitive: ansi.StylePrimitive{
+				Color:           strPtr("#D2691E"),
+				BackgroundColor: strPtr("#F0F0F0"),
+			},
+		},
+		CodeBlock: ansi.StyleCodeBlock{
+			StyleBlock: ansi.StyleBlock{
+				StylePrimitive: ansi.StylePrimitive{
+					Color:           strPtr("#333333"),
+					BackgroundColor: strPtr("#F5F5F5"),
+				},
+				Margin: uintPtr(2),
+			},
+		},
+		Table: ansi.StyleTable{
+			CenterSeparator: strPtr("┼"),
+			ColumnSeparator: strPtr("│"),
+			RowSeparator:    strPtr("─"),
+		},
+		DefinitionDescription: ansi.StylePrimitive{
+			BlockPrefix: "\n  → ",
+		},
+	}
+}
+
+func uintPtr(u uint) *uint { return &u }
+
+func renderMarkdown(s string, width int, isDark bool) string {
+	if s == "" {
+		return ""
+	}
+	var cfg ansi.StyleConfig
+	if isDark {
+		cfg = dhiDarkStyle()
+	} else {
+		cfg = dhiLightStyle()
+	}
+	rw := width - 3
+	if rw < 10 {
+		rw = 10
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStyles(cfg),
+		glamour.WithWordWrap(rw),
+	)
+	if err != nil {
+		return s
+	}
+	out, err := r.Render(s)
+	if err != nil {
+		return s
+	}
+	return out
 }
 
 func cleanResponse(response, userInput string) string {

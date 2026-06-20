@@ -2637,7 +2637,7 @@ func TestRenderConv_Default(t *testing.T) {
 	cc := &commandCenter{
 		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(10)),
 	}
-	result := cc.renderConv(50, false, "")
+	result := cc.renderConv(50, false, "", true)
 	if result == "" {
 		t.Error("expected non-empty render")
 	}
@@ -2655,9 +2655,9 @@ func TestRenderConv_WithConversations(t *testing.T) {
 			{input: "hello", response: "world"},
 			{input: "how are you?", response: "I'm fine"},
 		},
-		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(10)),
+		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(20)),
 	}
-	result := cc.renderConv(50, false, "")
+	result := cc.renderConv(50, false, "", true)
 	if !strings.Contains(result, "hello") {
 		t.Error("expected first input in render")
 	}
@@ -2667,7 +2667,7 @@ func TestRenderConv_WithConversations(t *testing.T) {
 	if !strings.Contains(result, "how are you?") {
 		t.Error("expected second input in render")
 	}
-	if !strings.Contains(result, "I'm fine") {
+	if !strings.Contains(result, "I'm") || !strings.Contains(result, "fine") {
 		t.Error("expected second response in render")
 	}
 	if !strings.Contains(result, "You:") {
@@ -2688,7 +2688,7 @@ func TestRenderConv_Thinking(t *testing.T) {
 		spinner:  s,
 		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(10)),
 	}
-	result := cc.renderConv(50, false, "")
+	result := cc.renderConv(50, false, "", true)
 	if !strings.Contains(result, "thinking query") {
 		t.Error("expected input text in render")
 	}
@@ -2705,7 +2705,7 @@ func TestRenderConv_WithTopicTitle(t *testing.T) {
 	cc := &commandCenter{
 		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(10)),
 	}
-	result := cc.renderConv(50, false, "My Topic")
+	result := cc.renderConv(50, false, "My Topic", true)
 	if !strings.Contains(result, "My Topic") {
 		t.Error("expected topic title in render output")
 	}
@@ -2716,7 +2716,7 @@ func TestRenderConv_TopicTitleTruncated(t *testing.T) {
 		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(10)),
 	}
 	longTitle := "abcdefghijklmnopqrstuvwxyz0123456789"
-	result := cc.renderConv(50, false, longTitle)
+	result := cc.renderConv(50, false, longTitle, true)
 	if !strings.Contains(result, "...") {
 		t.Error("expected long topic title to be truncated with ...")
 	}
@@ -2726,7 +2726,7 @@ func TestRenderConv_Focused(t *testing.T) {
 	cc := &commandCenter{
 		convView: viewport.New(viewport.WithWidth(50), viewport.WithHeight(10)),
 	}
-	result := cc.renderConv(50, true, "")
+	result := cc.renderConv(50, true, "", true)
 	if result == "" {
 		t.Error("expected non-empty render when focused")
 	}
@@ -3301,18 +3301,20 @@ func TestRssRenderAITab_NoSummary(t *testing.T) {
 func TestRssRenderAITab_WithData(t *testing.T) {
 	rp := &rssPanel{
 		loaded:    true,
+		isDark:    true,
 		aiSummary: "Top stories today:\n- Story 1\n- Story 2",
 		feedEntries: []rss.FeedEntry{
 			{ID: "e1", Title: "Story 1"},
 			{ID: "e2", Title: "Story 2"},
 		},
+		view: viewport.New(viewport.WithWidth(40), viewport.WithHeight(10)),
 	}
 	result := rp.renderAITab()
-	if !strings.Contains(result, "AI Curation") {
-		t.Error("expected AI Curation header")
-	}
-	if !strings.Contains(result, "Story 1") {
+	if !strings.Contains(result, "Story") {
 		t.Error("expected story content in AI summary")
+	}
+	if !strings.Contains(result, "Top") {
+		t.Error("expected top stories heading")
 	}
 }
 
