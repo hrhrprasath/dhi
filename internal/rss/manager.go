@@ -3,8 +3,10 @@ package rss
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +43,7 @@ type Manager struct {
 	entries    []FeedEntry
 	looperStop chan struct{}
 	onUpdate   func()
+	skipShorts bool
 }
 
 func NewManager(dataDir string) *Manager {
@@ -56,6 +59,7 @@ func NewManager(dataDir string) *Manager {
 		dataDir:    dir,
 		opmlPath:   opmlPath,
 		looperStop: make(chan struct{}),
+		skipShorts: true,
 	}
 
 	m.syncFromOPML()
@@ -63,8 +67,22 @@ func NewManager(dataDir string) *Manager {
 	return m
 }
 
+const rssTimeout = 30 * time.Second
+
+func newParser() *gofeed.Parser {
+	fp := gofeed.NewParser()
+	fp.Client = &http.Client{Timeout: rssTimeout}
+	return fp
+}
+
 func (m *Manager) SetOnUpdate(fn func()) {
 	m.onUpdate = fn
+}
+
+func (m *Manager) SetSkipShorts(skip bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.skipShorts = skip
 }
 
 // ─── OPML ───
@@ -145,7 +163,7 @@ func (m *Manager) AddSource(feedURL string) error {
 		}
 	}
 
-	fp := gofeed.NewParser()
+	fp := newParser()
 	feed, err := fp.ParseURL(feedURL)
 	if err != nil {
 		return fmt.Errorf("failed to parse feed: %w", err)
@@ -245,7 +263,14 @@ func (m *Manager) GetBookmarks() []FeedEntry {
 func (m *Manager) EntryCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return len(m.entries)
+	now := time.Now()
+	n := 0
+	for _, e := range m.entries {
+		if e.PublishedAt.Year() == now.Year() && e.PublishedAt.YearDay() == now.YearDay() {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *Manager) BookmarkCount() int {
@@ -279,9 +304,10 @@ func (m *Manager) FetchAll() {
 	m.mu.Lock()
 	sources := make([]FeedSource, len(m.sources))
 	copy(sources, m.sources)
+	skipShorts := m.skipShorts
 	m.mu.Unlock()
 
-	fp := gofeed.NewParser()
+	fp := newParser()
 	now := time.Now()
 
 	for _, src := range sources {
@@ -304,6 +330,12 @@ func (m *Manager) FetchAll() {
 			pubAt := now
 			if item.PublishedParsed != nil {
 				pubAt = *item.PublishedParsed
+			}
+			if pubAt.Before(now.Add(-5 * 24 * time.Hour)) {
+				continue
+			}
+			if skipShorts && strings.Contains(item.Link, "/shorts") {
+				continue
 			}
 			desc := ""
 			if item.Description != "" {
@@ -351,10 +383,39 @@ func (m *Manager) CleanOld() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cutoff := time.Now().Add(-7 * 24 * time.Hour)
+	cutoff := time.Now().Add(-5 * 24 * time.Hour)
 	var kept []FeedEntry
 	for _, e := range m.entries {
-		if e.IsBookmark || e.PublishedAt.After(cutoff) || e.FetchedAt.After(cutoff) {
+		if e.IsBookmark || e.PublishedAt.After(cutoff) {
+			kept = append(kept, e)
+		}
+	}
+
+	// Fallback: for sources with 0 entries in 5d, keep last 5
+	srcCount := map[string]int{}
+	for _, e := range kept {
+		srcCount[e.SourceID]++
+	}
+	now := time.Now()
+	for _, src := range m.sources {
+		if srcCount[src.ID] > 0 {
+			continue
+		}
+		var candidates []FeedEntry
+		for _, e := range m.entries {
+			if e.SourceID == src.ID {
+				candidates = append(candidates, e)
+			}
+		}
+		sort.Slice(candidates, func(i, j int) bool {
+			return candidates[i].PublishedAt.After(candidates[j].PublishedAt)
+		})
+		n := 5
+		if len(candidates) < n {
+			n = len(candidates)
+		}
+		for _, e := range candidates[:n] {
+			e.FetchedAt = now
 			kept = append(kept, e)
 		}
 	}
@@ -422,47 +483,97 @@ func (m *Manager) Summarize(s summarizer, max int) string {
 	m.mu.Lock()
 	entries := make([]FeedEntry, len(m.entries))
 	copy(entries, m.entries)
+	sources := make([]FeedSource, len(m.sources))
+	copy(sources, m.sources)
 	m.mu.Unlock()
 
 	if len(entries) == 0 {
 		return "No entries to summarize."
 	}
 
-	var sb strings.Builder
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].PublishedAt.After(entries[j].PublishedAt)
+	})
+
 	now := time.Now()
-	cutoff := now.Add(-24 * time.Hour)
-	count := 0
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+
+	// Collect today's entries (up to max total, max 3 per source)
+	srcCount := map[string]int{}
+	var raw []string
+	entryNum := 0
 	for _, e := range entries {
-		if count >= max {
-			break
-		}
-		if e.PublishedAt.Before(cutoff) {
+		if !e.PublishedAt.After(todayStart) {
 			continue
 		}
+		if srcCount[e.SourceID] >= 3 {
+			continue
+		}
+		srcCount[e.SourceID]++
+		entryNum++
 		sourceName := ""
-		for _, src := range m.sources {
+		for _, src := range sources {
 			if src.ID == e.SourceID {
 				sourceName = src.Title
 				break
 			}
 		}
-		fmt.Fprintf(&sb, "[Source: %s]\n", sourceName)
-		fmt.Fprintf(&sb, "Title: %s\n", e.Title)
-		fmt.Fprintf(&sb, "Link: %s\n", e.Link)
-		if e.Description != "" {
-			fmt.Fprintf(&sb, "Description: %s\n", e.Description)
+		raw = append(raw, fmt.Sprintf(
+			"---------\nReading: %d\nSource: %s\nTitle: %s\nLink: %s\n---------",
+			entryNum, sourceName, e.Title, e.Link,
+		))
+		if len(raw) >= max {
+			break
 		}
-		sb.WriteString("\n")
-		count++
+	}
+
+	// If no today's entries, fall back to 3 most recent per source
+	if len(raw) == 0 {
+		srcCount = map[string]int{}
+		for _, e := range entries {
+			if srcCount[e.SourceID] >= 3 {
+				continue
+			}
+			srcCount[e.SourceID]++
+			entryNum++
+			sourceName := ""
+			for _, src := range sources {
+				if src.ID == e.SourceID {
+					sourceName = src.Title
+					break
+				}
+			}
+			raw = append(raw, fmt.Sprintf(
+				"---------\nReading: %d\nSource: %s\nTitle: %s\nLink: %s\n---------",
+				entryNum, sourceName, e.Title, e.Link,
+			))
+			if len(raw) >= max {
+				break
+			}
+		}
+	}
+
+	if len(raw) == 0 {
+		return "No recent entries to curate."
 	}
 
 	prompt := fmt.Sprintf(
-		"Summarize the latest RSS feed entries into a curated list. For each entry provide:\n"+
-			"- Bold title\n"+
-			"- One-line highlight (what makes it interesting)\n"+
-			"- The URL on a separate line prefixed with →\n\n"+
-			"Group by source. Be concise. Highlight the most important stories first.\n\n%s",
-		sb.String(),
+		"You are a ruthless news curator for a busy professional. From the entries below, select ONLY the top 5 that genuinely need the user's attention today.\n\n"+
+			"STRICT RULES:\n"+
+			"- INCLUDE ONLY: breaking news, major announcements, security vulnerabilities, industry-shifting analysis, significant product launches\n"+
+			"- EXCLUDE EVERYTHING ELSE: routine updates, quarterly earnings (unless exceptional), price movements, market recaps, minor releases, casual blog posts, promotional content, sponsored articles, filler, listicles, opinion pieces without substance\n"+
+			"- When in doubt — EXCLUDE. The user has no time for noise.\n"+
+			"- If nothing is important enough from a source, omit it entirely. Better 2 great entries than 5 mediocre ones.\n"+
+			"- For each selected entry, write a one-line highlight explaining why the user must care.\n\n"+
+			"OUTPUT FORMAT (ONLY this format, one block per selected entry, no intro text, no commentary):\n\n"+
+			"---------\n"+
+			"Reading: <number>\n"+
+			"Source: <source name>\n"+
+			"Title: <title>\n"+
+			"Link: <url>\n"+
+			"<why this matters>\n"+
+			"---------\n\n%s",
+		strings.Join(raw, "\n\n"),
 	)
 
 	return s.Summarize(prompt, "rss_feeds", "Show me my RSS feeds", "")

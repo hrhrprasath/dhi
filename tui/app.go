@@ -2,10 +2,13 @@ package tui
 
 import (
 	"fmt"
+	osexec "os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"dhi_harness/internal/dhroot"
 	"dhi_harness/internal/intent"
 	"dhi_harness/internal/pipeline"
 	"dhi_harness/internal/rss"
@@ -272,6 +275,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.handleKeyPress(msg)
 		return m, tea.Batch(cmd, m.eventPoller())
 
+	case tea.PasteMsg:
+		if m.focused == focusInput {
+			var cmd tea.Cmd
+			m.cc.textInput, cmd = m.cc.textInput.Update(msg)
+			return m, tea.Batch(cmd, m.eventPoller())
+		}
+		return m, m.eventPoller()
+
+	case tea.PasteStartMsg, tea.PasteEndMsg:
+		return m, m.eventPoller()
+
 	case tea.MouseClickMsg:
 		cmd := m.handleMouseClick(msg.Mouse())
 		return m, tea.Batch(cmd, m.eventPoller())
@@ -300,7 +314,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.todo.view.SetHeight(ph)
 		m.schedule.view.SetWidth(vw - 2)
 		m.schedule.view.SetHeight(ph)
-		m.rss.view.SetWidth(vw - 2)
+		m.rss.view.SetWidth(vw)
 		m.rss.view.SetHeight(ph)
 		m.cc.textInput.SetWidth(rw - 24)
 		return m, m.eventPoller()
@@ -389,6 +403,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, m.eventPoller())
 
 	case refreshMsg:
+		return m, m.eventPoller()
+
+	case rssAddMsg:
+		if msg.err != nil {
+			m.logger.Info("RSS", "Failed to add RSS feed: "+msg.err.Error())
+			m.events <- logMsg{message: fmt.Sprintf("[RSS][ERROR] failed to add %s: %s", msg.url, msg.err)}
+		} else {
+			m.logger.Info("RSS", "Added RSS feed: "+msg.url)
+			m.events <- logMsg{message: fmt.Sprintf("[RSS][INFO] added %s", msg.url)}
+		}
+		return m, m.eventPoller()
+
+	case rssFetchTopicMsg:
+		if msg.err != nil {
+			m.cc.setResponse(msg.input, "Error: "+msg.err.Error())
+			m.logger.Info("RSS", "Failed to fetch: "+msg.err.Error())
+			m.events <- logMsg{message: fmt.Sprintf("[RSS][ERROR] fetch failed: %s", msg.err)}
+		} else {
+			title := msg.sourceName
+			if title == "" {
+				title = msg.url
+			}
+			m.topicMgr.CreateTopic("RSS: " + title)
+			if cur := m.topicMgr.CurrentTopic(); cur != nil {
+				_ = m.topicMgr.AppendTurn(cur.ID, "RSS fetch: "+title, msg.summary)
+			}
+			m.cc.setResponse(msg.input, msg.summary)
+			m.cc.convView.GotoBottom()
+			m.logger.Info("RSS", "Created topic from RSS entry: "+title)
+			m.events <- logMsg{message: fmt.Sprintf("[RSS][INFO] created topic from %s", title)}
+		}
 		return m, m.eventPoller()
 
 	case rssUpdateMsg:
@@ -504,10 +549,16 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		return m.handlePageDown()
 
 	case msg.Code == tea.KeyLeft:
-		return m.handleArrowLeft()
+		if m.todo.popupOpen || m.schedule.popupOpen || m.rss.popupOpen {
+			return m.handleArrowLeft()
+		}
+		// fall through to textinput handler below
 
 	case msg.Code == tea.KeyRight:
-		return m.handleArrowRight()
+		if m.todo.popupOpen || m.schedule.popupOpen || m.rss.popupOpen {
+			return m.handleArrowRight()
+		}
+		// fall through to textinput handler below
 	}
 
 	if m.todo.popupOpen || m.schedule.popupOpen {
@@ -538,7 +589,10 @@ func (m *Model) handleKeyPress(msg tea.KeyPressMsg) tea.Cmd {
 		case 'r', 'R':
 			return m.rssRemoveSource()
 		case 's', 'S':
-			return m.rssRefreshSummary()
+			if m.rss.tabIdx == 0 {
+				return m.rssRefreshSummary()
+			}
+			return m.rssFetchAsTopic()
 		}
 	}
 
@@ -650,6 +704,9 @@ func (m *Model) handleTab() tea.Cmd {
 }
 
 func (m *Model) handleEnter() tea.Cmd {
+	if m.rss.popupOpen {
+		return m.rssEnterSelected()
+	}
 	if m.focused == focusTopics {
 		m.selectRecentTopic()
 		return nil
@@ -730,15 +787,10 @@ func (m *Model) handleEnter() tea.Cmd {
 		}
 		if strings.HasPrefix(input, "/rss add ") {
 			url := strings.TrimSpace(strings.TrimPrefix(input, "/rss add "))
-			if err := m.rssMgr.AddSource(url); err != nil {
-				msg := fmt.Sprintf("Failed to add RSS feed: %v", err)
-				m.logger.Info("RSS", msg)
-				m.events <- logMsg{message: fmt.Sprintf("[RSS][ERROR] %s", msg)}
-			} else {
-				msg := fmt.Sprintf("Added RSS feed: %s", url)
-				m.logger.Info("RSS", msg)
-				m.events <- logMsg{message: fmt.Sprintf("[RSS][INFO] %s", msg)}
-			}
+			go func() {
+				err := m.rssMgr.AddSource(url)
+				m.events <- rssAddMsg{url: url, err: err}
+			}()
 			return nil
 		}
 		if input == "/schedule" {
@@ -806,7 +858,9 @@ func (m *Model) handleArrowUp() tea.Cmd {
 		return nil
 	}
 	if m.rss.popupOpen {
-		if m.rss.selIdx > 0 {
+		if m.rss.tabIdx == 0 {
+			m.rss.view.ScrollUp(3)
+		} else if m.rss.selIdx > 0 {
 			m.rss.selIdx--
 		}
 		return nil
@@ -855,17 +909,19 @@ func (m *Model) handleArrowDown() tea.Cmd {
 		return nil
 	}
 	if m.rss.popupOpen {
-		maxIdx := 0
-		switch m.rss.tabIdx {
-		case 0:
-			maxIdx = 0
-		case 1:
-			maxIdx = len(m.rss.rawItems) - 1
-		case 2:
-			maxIdx = len(m.rss.bookmarkItems) - 1
-		}
-		if m.rss.selIdx < maxIdx {
-			m.rss.selIdx++
+		if m.rss.tabIdx == 0 {
+			m.rss.view.ScrollDown(3)
+		} else {
+			maxIdx := 0
+			switch m.rss.tabIdx {
+			case 1:
+				maxIdx = len(m.rss.rawItems) - 1
+			case 2:
+				maxIdx = len(m.rss.bookmarkItems) - 1
+			}
+			if m.rss.selIdx < maxIdx {
+				m.rss.selIdx++
+			}
 		}
 		return nil
 	}
@@ -914,6 +970,15 @@ func (m *Model) handlePageDown() tea.Cmd {
 // ─── Mouse Handling ───
 
 func (m *Model) handleMouseWheel(mouse tea.Mouse) {
+	if m.rss.popupOpen {
+		switch mouse.Button {
+		case tea.MouseWheelUp:
+			m.rss.view.ScrollUp(3)
+		case tea.MouseWheelDown:
+			m.rss.view.ScrollDown(3)
+		}
+		return
+	}
 	switch mouse.Button {
 	case tea.MouseWheelUp:
 		switch m.focused {
@@ -1357,7 +1422,7 @@ func (m *Model) toggleRssPopup() {
 			go func() {
 				m.rssMgr.FetchAll()
 				m.rss.loadData(m.rssMgr)
-				m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 20)
+				m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 10)
 				m.rss.loading = false
 				m.rss.loaded = true
 				m.rss.lastFetch = time.Now()
@@ -1366,7 +1431,7 @@ func (m *Model) toggleRssPopup() {
 		} else if m.rss.aiSummary == "" && m.rss.loaded {
 			m.rss.loading = true
 			go func() {
-				m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 20)
+				m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 10)
 				m.rss.loading = false
 				m.events <- refreshMsg{}
 			}()
@@ -1378,6 +1443,10 @@ func (m *Model) toggleRssPopup() {
 }
 
 func (m *Model) rssEnterSelected() tea.Cmd {
+	openURL := func(url string) {
+		m.logger.Info("OPEN", fmt.Sprintf("Opening URL in browser: %s", url))
+		_ = osexec.Command("open", url).Run()
+	}
 	switch m.rss.tabIdx {
 	case 0:
 		return nil
@@ -1393,7 +1462,7 @@ func (m *Model) rssEnterSelected() tea.Cmd {
 		if entry.Link == "" {
 			return nil
 		}
-		m.handleOpenURL(entry.Link)
+		openURL(entry.Link)
 	case 2:
 		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.bookmarkItems) {
 			return nil
@@ -1402,7 +1471,7 @@ func (m *Model) rssEnterSelected() tea.Cmd {
 		if entry.Link == "" {
 			return nil
 		}
-		m.handleOpenURL(entry.Link)
+		openURL(entry.Link)
 	}
 	return nil
 }
@@ -1466,9 +1535,67 @@ func (m *Model) rssRefreshSummary() tea.Cmd {
 	}
 	m.rss.loading = true
 	go func() {
-		m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 20)
+		m.rss.aiSummary = m.rssMgr.Summarize(m.executor.Summarizer(), 10)
 		m.rss.loading = false
 		m.events <- refreshMsg{}
+	}()
+	return nil
+}
+
+func (m *Model) rssFetchAsTopic() tea.Cmd {
+	url := ""
+	sourceName := ""
+	switch m.rss.tabIdx {
+	case 0:
+		return nil
+	case 1:
+		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.rawItems) {
+			return nil
+		}
+		item := m.rss.rawItems[m.rss.selIdx]
+		if item.isSource {
+			url = item.source.FeedURL
+			sourceName = item.source.Title
+		} else {
+			url = item.entry.Link
+			sourceName = item.entry.Title
+		}
+	case 2:
+		if m.rss.selIdx < 0 || m.rss.selIdx >= len(m.rss.bookmarkItems) {
+			return nil
+		}
+		entry := m.rss.bookmarkItems[m.rss.selIdx]
+		url = entry.Link
+		sourceName = entry.Title
+	}
+	if url == "" {
+		return nil
+	}
+
+	label := sourceName
+	if label == "" {
+		label = url
+	}
+	fetchInput := "📡 " + label
+
+	m.rss.popupOpen = false
+	m.focused = focusInput
+	m.cc.textInput.Focus()
+	m.cc.setThinking(fetchInput)
+	m.cc.convView.GotoBottom()
+
+	m.logger.Info("RSS", fmt.Sprintf("Fetching as topic: %s", url))
+	go func() {
+		script := filepath.Join(dhroot.ScriptsDir(), "fetch_url")
+		out, err := osexec.Command(script, url).CombinedOutput()
+		if err != nil {
+			m.events <- rssFetchTopicMsg{url: url, sourceName: sourceName, input: fetchInput, err: fmt.Errorf("fetch failed: %w", err)}
+			return
+		}
+		raw := string(out)
+		summary := m.executor.Summarizer().Summarize(raw, "fetch_url",
+			fmt.Sprintf("Give a comprehensive ~200 line detailed summary of this content from %s. Cover all key points, insights, and details. Format it as a well-structured article.", sourceName), "")
+		m.events <- rssFetchTopicMsg{url: url, sourceName: sourceName, input: fetchInput, summary: summary}
 	}()
 	return nil
 }

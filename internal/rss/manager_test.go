@@ -83,6 +83,7 @@ func TestRemoveSource(t *testing.T) {
 	})
 
 	t.Run("removes source and associated entries", func(t *testing.T) {
+		now := time.Now()
 		m := &Manager{
 			dataDir:    t.TempDir(),
 			looperStop: make(chan struct{}),
@@ -91,9 +92,9 @@ func TestRemoveSource(t *testing.T) {
 				{ID: "s2", Title: "Remove"},
 			},
 			entries: []FeedEntry{
-				{ID: "e1", SourceID: "s1", Title: "Entry from keep"},
-				{ID: "e2", SourceID: "s2", Title: "Entry from remove"},
-				{ID: "e3", SourceID: "s1", Title: "Another from keep"},
+				{ID: "e1", SourceID: "s1", Title: "Entry from keep", PublishedAt: now},
+				{ID: "e2", SourceID: "s2", Title: "Entry from remove", PublishedAt: now},
+				{ID: "e3", SourceID: "s1", Title: "Another from keep", PublishedAt: now},
 			},
 		}
 
@@ -143,11 +144,14 @@ func TestListEntries(t *testing.T) {
 }
 
 func TestEntryCount(t *testing.T) {
+	now := time.Now()
 	m := &Manager{
 		dataDir:    t.TempDir(),
 		looperStop: make(chan struct{}),
 		entries: []FeedEntry{
-			{ID: "1"}, {ID: "2"}, {ID: "3"},
+			{ID: "1", PublishedAt: now},
+			{ID: "2", PublishedAt: now},
+			{ID: "3", PublishedAt: now},
 		},
 	}
 	if got := m.EntryCount(); got != 3 {
@@ -221,24 +225,26 @@ func TestBookmarkCount(t *testing.T) {
 
 func TestCleanOld(t *testing.T) {
 	now := time.Now()
-	recent := now
+	fiveDaysAgo := now.Add(-5 * 24 * time.Hour)
 	old := now.Add(-14 * 24 * time.Hour)
 
 	m := &Manager{
 		dataDir:    t.TempDir(),
 		looperStop: make(chan struct{}),
+		sources: []FeedSource{
+			{ID: "src1", Title: "Source 1"},
+		},
 		entries: []FeedEntry{
-			{ID: "1", Title: "Recent", PublishedAt: recent, FetchedAt: recent},
-			{ID: "2", Title: "Old non-bookmark", PublishedAt: old, FetchedAt: old},
-			{ID: "3", Title: "Old but bookmarked", PublishedAt: old, FetchedAt: old, IsBookmark: true},
-			{ID: "4", Title: "Old but recently fetched", PublishedAt: old, FetchedAt: recent},
+			{ID: "1", SourceID: "src1", Title: "Recent", PublishedAt: now},
+			{ID: "2", SourceID: "src1", Title: "Old non-bookmark", PublishedAt: old},
+			{ID: "3", SourceID: "src1", Title: "Old but bookmarked", PublishedAt: old, IsBookmark: true},
+			{ID: "4", SourceID: "src1", Title: "Old but within 5d", PublishedAt: fiveDaysAgo.Add(time.Hour)},
 		},
 	}
 
 	m.CleanOld()
 
-	// Expect: entries 1 (recent), 3 (bookmarked), 4 (recently fetched) kept
-	//         entry 2 removed
+	// Expect: entries 1 (recent), 3 (bookmarked), 4 (within 5d) kept
 	if len(m.entries) != 3 {
 		t.Fatalf("CleanOld left %d entries, want 3", len(m.entries))
 	}
@@ -251,6 +257,39 @@ func TestCleanOld(t *testing.T) {
 	}
 	if kept["2"] {
 		t.Error("CleanOld should have removed old non-bookmark entry 2")
+	}
+}
+
+func TestCleanOld_FallbackLastFive(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-14 * 24 * time.Hour)
+
+	m := &Manager{
+		dataDir:    t.TempDir(),
+		looperStop: make(chan struct{}),
+		sources: []FeedSource{
+			{ID: "src1", Title: "Source 1"},
+		},
+		entries: []FeedEntry{
+			{ID: "a", SourceID: "src1", Title: "Old a", PublishedAt: old.Add(-time.Hour)},
+			{ID: "b", SourceID: "src1", Title: "Old b", PublishedAt: old},
+			{ID: "c", SourceID: "src1", Title: "Old c", PublishedAt: old.Add(time.Hour)},
+			{ID: "d", SourceID: "src1", Title: "Old d", PublishedAt: old.Add(2 * time.Hour)},
+			{ID: "e", SourceID: "src1", Title: "Old e", PublishedAt: old.Add(3 * time.Hour)},
+			{ID: "f", SourceID: "src1", Title: "Old f", PublishedAt: old.Add(4 * time.Hour)},
+		},
+	}
+
+	m.CleanOld()
+
+	// Should keep last 5 by PublishedAt (all except "a")
+	if len(m.entries) != 5 {
+		t.Fatalf("CleanOld left %d entries, want 5 (fallback last 5)", len(m.entries))
+	}
+	for _, e := range m.entries {
+		if e.ID == "a" {
+			t.Error("CleanOld should have removed oldest entry 'a', kept last 5")
+		}
 	}
 }
 

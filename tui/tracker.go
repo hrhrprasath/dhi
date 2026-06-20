@@ -279,11 +279,11 @@ func (rp *rssPanel) renderPopup(w int) string {
 	var helpTxt string
 	switch rp.tabIdx {
 	case 0:
-		helpTxt = " ↑↓ nav · ←→ tab · Enter open · S refresh · ESC close "
+		helpTxt = " ↑↓ nav · ←→ tab · Enter open · s/S refresh summary · ESC close "
 	case 1:
-		helpTxt = " ↑↓ nav · ←→ tab · Enter open · B bookmark · R remove source · ESC close "
+		helpTxt = " ↑↓ nav · ←→ tab · Enter open · B bookmark · R remove source · s/S fetch topic · ESC close "
 	case 2:
-		helpTxt = " ↑↓ nav · ←→ tab · Enter open · B unbookmark · ESC close "
+		helpTxt = " ↑↓ nav · ←→ tab · Enter open · B unbookmark · s/S fetch topic · ESC close "
 	}
 	help := lipgloss.NewStyle().Foreground(dimColor).Render(helpTxt)
 
@@ -355,8 +355,25 @@ func (rp *rssPanel) renderRawTab() string {
 	if len(rp.rawItems) == 0 {
 		return lipgloss.NewStyle().Foreground(dimColor).Render("No feeds. Add via /rss add <url> or OPML import.") + "\n"
 	}
+
+	// Find which source is currently "open" (contains the selected item)
+	openSourceID := ""
+	selItem := rp.selIdx
+	if selItem >= 0 && selItem < len(rp.rawItems) {
+		item := rp.rawItems[selItem]
+		if item.isSource {
+			openSourceID = item.source.ID
+		} else {
+			openSourceID = item.entry.SourceID
+		}
+	}
+
 	var sb strings.Builder
 	n := 0
+	titleMax := rp.view.Width() - 6
+	if titleMax < 20 {
+		titleMax = 20
+	}
 	for _, item := range rp.rawItems {
 		selIdx := n
 		n++
@@ -377,17 +394,24 @@ func (rp *rssPanel) renderRawTab() string {
 			}
 			sb.WriteString(style.Render(fmt.Sprintf("%s▶ %s (%d)", mark, item.source.Title, entryCount)) + "\n")
 		} else {
+			if item.entry.SourceID != openSourceID {
+				continue
+			}
 			entry := item.entry
 			bookmark := " "
 			if entry.IsBookmark {
 				bookmark = "🔖"
 			}
 			title := entry.Title
-			if len(title) > 50 {
-				title = title[:47] + "..."
+			if len(title) > titleMax {
+				title = title[:titleMax-3] + "..."
 			}
 			timeAgo := formatTimeAgo(entry.PublishedAt)
-			link := shortenURL(entry.Link)
+			linkMax := rp.view.Width() - 9 - len(timeAgo)
+			if linkMax < 10 {
+				linkMax = 10
+			}
+			link := shortenURL(entry.Link, linkMax)
 
 			sb.WriteString(style.Render(fmt.Sprintf("   %s%s %s", mark, bookmark, title)) + "\n")
 			linkStyle := lipgloss.NewStyle().Foreground(dimColor)
@@ -405,6 +429,10 @@ func (rp *rssPanel) renderBookmarkTab() string {
 		return lipgloss.NewStyle().Foreground(dimColor).Render("No bookmarks. Press B on an entry to bookmark.") + "\n"
 	}
 	var sb strings.Builder
+	titleMax := rp.view.Width() - 2
+	if titleMax < 20 {
+		titleMax = 20
+	}
 	for i, entry := range rp.bookmarkItems {
 		mark := "  "
 		style := lipgloss.NewStyle().Foreground(dimColor)
@@ -414,8 +442,8 @@ func (rp *rssPanel) renderBookmarkTab() string {
 		}
 
 		title := entry.Title
-		if len(title) > 50 {
-			title = title[:47] + "..."
+		if len(title) > titleMax {
+			title = title[:titleMax-3] + "..."
 		}
 		sourceName := ""
 		for _, src := range rp.feedSources {
@@ -425,7 +453,11 @@ func (rp *rssPanel) renderBookmarkTab() string {
 			}
 		}
 		timeAgo := formatTimeAgo(entry.PublishedAt)
-		link := shortenURL(entry.Link)
+		linkMax := rp.view.Width() - 10 - len(sourceName) - len(timeAgo)
+		if linkMax < 10 {
+			linkMax = 10
+		}
+		link := shortenURL(entry.Link, linkMax)
 
 		sb.WriteString(style.Render(fmt.Sprintf("  %s%s", mark, title)) + "\n")
 		sourceStyle := lipgloss.NewStyle().Foreground(dimColor)
@@ -460,12 +492,12 @@ func formatTimeAgo(t time.Time) string {
 	return t.Format("Jan 2")
 }
 
-func shortenURL(url string) string {
+func shortenURL(url string, max int) string {
 	url = strings.TrimPrefix(url, "https://")
 	url = strings.TrimPrefix(url, "http://")
 	url = strings.TrimPrefix(url, "www.")
-	if len(url) > 45 {
-		url = url[:42] + "..."
+	if len(url) > max {
+		url = url[:max-3] + "..."
 	}
 	return url
 }

@@ -75,6 +75,7 @@ func main() {
 	sysSvc := services.NewSystemService()
 	todoMgr := todo.NewManager(dhroot.DataDir())
 	rssMgr := rss.NewManager(dhroot.DataDir())
+	rssMgr.SetSkipShorts(cfg.RSS.SkipShorts)
 
 	// Pre-warm agent-browser daemon so first search isn't slowed by Chrome cold start
 	go func() {

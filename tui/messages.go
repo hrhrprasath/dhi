@@ -21,3 +21,14 @@ type pipelineStatusMsg struct {
 }
 type refreshMsg struct{}
 type rssUpdateMsg struct{}
+type rssAddMsg struct {
+	url string
+	err error
+}
+type rssFetchTopicMsg struct {
+	url        string
+	sourceName string
+	input      string
+	summary    string
+	err        error
+}

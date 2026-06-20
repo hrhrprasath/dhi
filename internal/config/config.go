@@ -19,6 +19,11 @@ var (
 type AIConfig struct {
 	AI        ai.Config            `yaml:"ai"`
 	Providers map[string]ai.Config `yaml:"providers,omitempty"`
+	RSS       RSSConfig            `yaml:"rss"`
+}
+
+type RSSConfig struct {
+	SkipShorts bool `yaml:"skip_shorts"`
 }
 
 const defaultConfigPath = ""
@@ -72,6 +77,9 @@ func defaultConfig() AIConfig {
 			Model:       "qwen2.5:7b",
 			MaxTokens:   4096,
 			Temperature: 0.7,
+		},
+		RSS: RSSConfig{
+			SkipShorts: true,
 		},
 	}
 }

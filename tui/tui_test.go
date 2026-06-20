@@ -1665,12 +1665,34 @@ func TestHandleArrowUp_RssPopup(t *testing.T) {
 	m := &Model{
 		rss: rssPanel{
 			popupOpen: true,
+			tabIdx:    1,
 			selIdx:    3,
 		},
 	}
 	m.handleArrowUp()
 	if m.rss.selIdx != 2 {
 		t.Errorf("expected selIdx 2, got %d", m.rss.selIdx)
+	}
+}
+
+func TestHandleArrowDown_RssPopup(t *testing.T) {
+	m := &Model{
+		rss: rssPanel{
+			popupOpen: true,
+			tabIdx:    1,
+			selIdx:    3,
+			rawItems: []rawItem{
+				{isSource: true},
+				{isSource: false},
+				{isSource: false},
+				{isSource: false},
+				{isSource: true},
+			},
+		},
+	}
+	m.handleArrowDown()
+	if m.rss.selIdx != 4 {
+		t.Errorf("expected selIdx 4, got %d", m.rss.selIdx)
 	}
 }
 
@@ -2431,15 +2453,10 @@ func TestRssEnterSelected_Tab0ReturnsNil(t *testing.T) {
 }
 
 func TestRssEnterSelected_Tab1ValidItem(t *testing.T) {
-	dataDir := t.TempDir()
 	logger := services.NewLogger()
-	tkm := task.NewManager(dataDir, &task.DefaultParser{})
-	convView := viewport.New(viewport.WithWidth(40), viewport.WithHeight(10))
-	s := spinner.New()
 	m := &Model{
-		logger:  logger,
-		taskMgr: tkm,
-		events:  make(chan any, 200),
+		logger: logger,
+		events: make(chan any, 200),
 		rss: rssPanel{
 			tabIdx: 1,
 			selIdx: 0,
@@ -2454,27 +2471,18 @@ func TestRssEnterSelected_Tab1ValidItem(t *testing.T) {
 				},
 			},
 		},
-		cc: commandCenter{
-			convView: convView,
-			spinner:  s,
-		},
 	}
-	m.rssEnterSelected()
-	if m.cc.lastSubmitted != "open https://example.com/article1" {
-		t.Errorf("expected lastSubmitted 'open https://example.com/article1', got %q", m.cc.lastSubmitted)
+	cmd := m.rssEnterSelected()
+	if cmd != nil {
+		t.Error("expected nil command")
 	}
 }
 
 func TestRssEnterSelected_Tab2ValidItem(t *testing.T) {
-	dataDir := t.TempDir()
 	logger := services.NewLogger()
-	tkm := task.NewManager(dataDir, &task.DefaultParser{})
-	convView := viewport.New(viewport.WithWidth(40), viewport.WithHeight(10))
-	s := spinner.New()
 	m := &Model{
-		logger:  logger,
-		taskMgr: tkm,
-		events:  make(chan any, 200),
+		logger: logger,
+		events: make(chan any, 200),
 		rss: rssPanel{
 			tabIdx: 2,
 			selIdx: 0,
@@ -2486,14 +2494,10 @@ func TestRssEnterSelected_Tab2ValidItem(t *testing.T) {
 				},
 			},
 		},
-		cc: commandCenter{
-			convView: convView,
-			spinner:  s,
-		},
 	}
-	m.rssEnterSelected()
-	if m.cc.lastSubmitted != "open https://example.com/bookmark" {
-		t.Errorf("expected lastSubmitted 'open https://example.com/bookmark', got %q", m.cc.lastSubmitted)
+	cmd := m.rssEnterSelected()
+	if cmd != nil {
+		t.Error("expected nil command")
 	}
 }
 
@@ -3324,11 +3328,12 @@ func TestRssRenderRawTab_WithItems(t *testing.T) {
 	rp := &rssPanel{
 		rawItems: []rawItem{
 			{isSource: true, source: rss.FeedSource{ID: "src1", Title: "Test Source"}},
-			{isSource: false, entry: rss.FeedEntry{ID: "e1", Title: "Article One", Link: "https://example.com/1", PublishedAt: time.Now()}},
+			{isSource: false, entry: rss.FeedEntry{ID: "e1", SourceID: "src1", Title: "Article One", Link: "https://example.com/1", PublishedAt: time.Now()}},
 		},
 		selIdx: 0,
 	}
 	result := rp.renderRawTab()
+	t.Logf("renderRawTab result: %q", result)
 	if result == "" {
 		t.Error("expected non-empty render")
 	}

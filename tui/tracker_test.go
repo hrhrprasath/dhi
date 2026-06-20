@@ -73,7 +73,7 @@ func TestShortenURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := shortenURL(tt.url)
+			got := shortenURL(tt.url, 45)
 			if got != tt.want {
 				t.Errorf("shortenURL(%q) = %q, want %q", tt.url, got, tt.want)
 			}
@@ -148,12 +148,22 @@ func TestShortenURL_Consistent(t *testing.T) {
 		"https://github.com/user/repo/issues/1",
 	}
 	for _, u := range urls {
-		result := shortenURL(u)
+		result := shortenURL(u, 45)
 		if result == "" {
 			t.Errorf("shortenURL(%q) returned empty", u)
 		}
 		if len(result) > 48 {
 			t.Errorf("shortenURL(%q) = %q (len=%d), want <= 48", u, result, len(result))
 		}
+	}
+}
+
+func TestShortenURL_MaxParameter(t *testing.T) {
+	r := shortenURL("https://example.com/very/long/path/that/should/be/truncated", 20)
+	if len(r) > 20 {
+		t.Errorf("shortenURL with max=20 returned len=%d: %q", len(r), r)
+	}
+	if r != "example.com/very/..." {
+		t.Errorf("shortenURL with max=20 = %q, want %q", r, "example.com/ver...")
 	}
 }
