@@ -24,9 +24,9 @@ func (t *trackerPanel) render(todoMgr *todo.Manager, taskMgr *task.Manager, rssM
 	activeScheds := taskMgr.CountByStatus(task.StatusWaiting)
 	rssCount := rssMgr.EntryCount()
 
-	fmt.Fprintf(&sb, "   Todos:  %d pending\n", activeTodos)
-	fmt.Fprintf(&sb, "   Sched:  %d upcoming\n", activeScheds)
-	fmt.Fprintf(&sb, "   RSS:    %d entries\n", rssCount)
+	fmt.Fprintf(&sb, "Todos:  %d pending\n", activeTodos)
+	fmt.Fprintf(&sb, "Sched:  %d upcoming\n", activeScheds)
+	fmt.Fprintf(&sb, "RSS:    %d entries\n", rssCount)
 	sb.WriteString(lipgloss.NewStyle().Foreground(dimColor).Render(" /todo  /schedule  /rss"))
 
 	return borderStyle.Width(28).Render(

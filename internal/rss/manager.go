@@ -263,10 +263,10 @@ func (m *Manager) GetBookmarks() []FeedEntry {
 func (m *Manager) EntryCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
+	cutoff := time.Now().Add(-5 * 24 * time.Hour)
 	n := 0
 	for _, e := range m.entries {
-		if e.PublishedAt.Year() == now.Year() && e.PublishedAt.YearDay() == now.YearDay() {
+		if e.PublishedAt.After(cutoff) {
 			n++
 		}
 	}
@@ -558,21 +558,16 @@ func (m *Manager) Summarize(s summarizer, max int) string {
 	}
 
 	prompt := fmt.Sprintf(
-		"You are a ruthless news curator for a busy professional. From the entries below, select ONLY the top 5 that genuinely need the user's attention today.\n\n"+
-			"STRICT RULES:\n"+
-			"- INCLUDE ONLY: breaking news, major announcements, security vulnerabilities, industry-shifting analysis, significant product launches\n"+
-			"- EXCLUDE EVERYTHING ELSE: routine updates, quarterly earnings (unless exceptional), price movements, market recaps, minor releases, casual blog posts, promotional content, sponsored articles, filler, listicles, opinion pieces without substance\n"+
-			"- When in doubt — EXCLUDE. The user has no time for noise.\n"+
-			"- If nothing is important enough from a source, omit it entirely. Better 2 great entries than 5 mediocre ones.\n"+
-			"- For each selected entry, write a one-line highlight explaining why the user must care.\n\n"+
-			"OUTPUT FORMAT (ONLY this format, one block per selected entry, no intro text, no commentary):\n\n"+
-			"---------\n"+
-			"Reading: <number>\n"+
-			"Source: <source name>\n"+
-			"Title: <title>\n"+
-			"Link: <url>\n"+
-			"<why this matters>\n"+
-			"---------\n\n%s",
+		"You are an RSS curator. Your ONLY source of information is the list of RSS entries below. You have NO other knowledge — do not use your training data.\n\n"+
+			"List up to 5 entries from the list below. Repeat each entry EXACTLY as given — do not change titles, links, or sources. Do not invent anything.\n\n"+
+			"RULES:\n"+
+			"- Only include entries from the list below. Never invent entries.\n"+
+			"- Never use your own knowledge. Only the entries below exist.\n"+
+			"- List the most recent entries first.\n\n"+
+			"OUTPUT FORMAT (markdown, no intro or outro text):\n\n"+
+			"### <title>\n"+
+			"**Source:** <source name>  \n"+
+			"**Link:** <url>\n\n%s",
 		strings.Join(raw, "\n\n"),
 	)
 

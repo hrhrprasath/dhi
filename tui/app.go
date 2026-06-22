@@ -940,7 +940,7 @@ func (m *Model) handleArrowDown() tea.Cmd {
 		m.cc.convView.ScrollDown(3)
 	case focusTopics:
 		all := m.topicMgr.ListTopics()
-		limit := 5
+	limit := 17
 		if len(all) > limit {
 			all = all[:limit]
 		}

@@ -22,7 +22,7 @@ type topicPanel struct {
 func (t *topicPanel) renderRecent(all []topic.Topic, cur *topic.Topic, focused bool, height int) string {
 	var sb strings.Builder
 
-	limit := 5
+	limit := 17
 	if len(all) > limit {
 		all = all[:limit]
 	}
