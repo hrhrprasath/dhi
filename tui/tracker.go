@@ -72,6 +72,8 @@ func (tp *todoPanel) renderPopup(w int) string {
 	help := lipgloss.NewStyle().Foreground(dimColor).Render(helpTxt)
 
 	var list strings.Builder
+	var selLine int
+	currentLine := 0
 	for i, it := range tp.items {
 		mark := "  "
 		style := lipgloss.NewStyle().Foreground(dimColor)
@@ -83,11 +85,26 @@ func (tp *todoPanel) renderPopup(w int) string {
 		if it.Done {
 			status = "☑"
 		}
-		label := it.Text
-		if len(label) > 50 {
-			label = label[:47] + "..."
+		prefix := fmt.Sprintf("%s%s ", mark, status)
+		prefixWidth := lipgloss.Width(prefix)
+		labelWidth := tp.view.Width() - prefixWidth
+		if labelWidth < 10 {
+			labelWidth = 10
 		}
-		list.WriteString(style.Render(fmt.Sprintf("%s%s %s", mark, status, label)) + "\n")
+		wrapped := lipgloss.NewStyle().Width(labelWidth).Render(it.Text)
+		wrappedLines := strings.Split(wrapped, "\n")
+		for j, line := range wrappedLines {
+			if j == 0 {
+				list.WriteString(style.Render(prefix+line) + "\n")
+			} else {
+				indent := strings.Repeat(" ", prefixWidth)
+				list.WriteString(style.Render(indent+line) + "\n")
+			}
+		}
+		if i == tp.selIdx {
+			selLine = currentLine
+		}
+		currentLine += len(wrappedLines)
 	}
 
 	content := list.String()
@@ -102,10 +119,10 @@ func (tp *todoPanel) renderPopup(w int) string {
 	if len(tp.items) > 0 {
 		visLines := tp.view.Height()
 		yoff := tp.view.YOffset()
-		if tp.selIdx > yoff+visLines-2 {
-			tp.view.ScrollDown(tp.selIdx - (yoff + visLines) + 2)
-		} else if tp.selIdx < yoff {
-			tp.view.ScrollUp(yoff - tp.selIdx)
+		if selLine > yoff+visLines-2 {
+			tp.view.ScrollDown(selLine - (yoff + visLines) + 2)
+		} else if selLine < yoff {
+			tp.view.ScrollUp(yoff - selLine)
 		}
 	}
 
@@ -169,9 +186,13 @@ func (sp *schedulePanel) renderPopup(w int) string {
 		if t.ScheduledFor != nil {
 			when = t.ScheduledFor.Format("15:04")
 		}
+		labelMax := sp.view.Width() - 11
+		if labelMax < 15 {
+			labelMax = 15
+		}
 		label := t.RawInput
-		if len(label) > 35 {
-			label = label[:32] + "..."
+		if len(label) > labelMax {
+			label = label[:labelMax-3] + "..."
 		}
 		line := fmt.Sprintf("%s%s", mark, label)
 		if when != "" {

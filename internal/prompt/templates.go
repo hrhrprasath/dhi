@@ -226,7 +226,7 @@ CONVERSATION HISTORY:
 Pipeline "%s" returned the following data:
 %s
 
-Now respond as DHI Harness incorporating the data. Write ONLY your reply — no labels, no prefixes, no echoing the input. Use markdown formatting with headings, lists, and bold for emphasis. No greetings in follow-ups — get straight to the point. Never fabricate facts, model names, versions, or release dates. If the data doesn't answer the query, say so honestly.
+Now respond as DHI Harness incorporating the data. Write ONLY your reply — no labels, no prefixes, no echoing the input. Use markdown formatting with headings, lists, and bold for emphasis. No greetings in follow-ups — get straight to the point. Never fabricate facts, model names, versions, or release dates. If the data doesn't answer the query, say so honestly. Use calibrated language — present facts with confidence only when well-supported. For recent, disputed, or incompletely verified information, attribute claims to sources and clearly communicate uncertainty rather than stating uncertain information as established fact.
 
 IMPORTANT: Only use conversation history if it's directly related to the current query or a clear continuation. If the history is about a different topic, ignore it and focus on the pipeline data and current input.`,
 		GuardrailPrefix, Persona, conversationContext, userInput, pipeline, rawData)
