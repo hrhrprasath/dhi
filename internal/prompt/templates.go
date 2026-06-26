@@ -151,6 +151,8 @@ Your ONLY task is to output a JSON object classifying the user's intent. Do NOT 
 CLASSIFIER:
 Default action is CONVERSATION. Only use EXECUTE_XXX for clear actionable requests.
 
+URL DETECTION: If USER_INPUT contains a URL (http:// or https://), prefer EXECUTE_FETCH_URL over any other pipeline. The URL is the param for fetch_url.
+
 EXECUTE_XXX pipelines are defined below (event, description, weight, keywords, params). Use them when the user's request clearly matches a pipeline's purpose. Do NOT invent pipeline names — only use the events listed below.
 
 Internal actions (no EXECUTE_ prefix):

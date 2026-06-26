@@ -9,6 +9,30 @@ if ! command -v ddgr &>/dev/null; then
   exit 1
 fi
 
+# ── Dynamic Chrome UA with 10-day cache ──
+CHROME_CACHE="$HOME/.dhi/data/chrome_version"
+CHROME_MAJOR=""
+if [ -f "$CHROME_CACHE" ]; then
+  cached=$(cat "$CHROME_CACHE")
+  file_age=$(( $(date +%s) - $(stat -f %m "$CHROME_CACHE" 2>/dev/null || echo 0) ))
+  [ "$file_age" -lt 864000 ] && [ -n "$cached" ] && CHROME_MAJOR="$cached"
+fi
+if [ -z "$CHROME_MAJOR" ]; then
+  for candidate in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "$HOME/.agent-browser/browsers/"*"/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"; do
+    if [ -x "$candidate" ]; then
+      CHROME_MAJOR=$( "$candidate" --version 2>/dev/null | grep -oE '[0-9]+' | head -1 )
+      [ -n "$CHROME_MAJOR" ] && break
+    fi
+  done
+  : "${CHROME_MAJOR:=130}"
+  mkdir -p "$(dirname "$CHROME_CACHE")" 2>/dev/null
+  echo "$CHROME_MAJOR" > "$CHROME_CACHE"
+fi
+AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36"
+export AGENT_BROWSER_USER_AGENT
+
 q="$*"
 
 # Search DuckDuckGo via ddgr (avoids CAPTCHA issues that plague raw curl/lightpanda)
@@ -29,12 +53,11 @@ urls=$(echo "$results" | jq -r '.[].url' | head -3)
 [ -z "$urls" ] && exit 0
 
 # Fetch each page in parallel with agent-browser (Chrome stays alive in daemon after first call).
-# Use a standard Chrome UA and wait 1s for JS to render.
 for url in $urls; do
   (
     echo "=== PAGE: $url ==="
-    AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-    agent-browser batch "open $url" "wait 1000" "get text body" 2>/dev/null | head -80
+    agent-browser --session-name dhi --args "--disable-blink-features=AutomationControlled" \
+      batch "open $url" "wait 3000" "get text body" 2>/dev/null | head -80
     echo ""
   ) &
 done

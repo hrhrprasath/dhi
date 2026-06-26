@@ -41,9 +41,9 @@ pipelines:
       script: "s --provider {site} {query}"
 
   - name: fetch_url
-    description: Fetch and summarize a webpage without opening the browser
-    keywords: [read article, get page content, fetch url, summarize webpage, extract text from url, show website content, read this page]
-    weight: 0.4
+    description: Fetch and summarize a webpage without opening the browser (triggered when user input contains a URL or mentions summarize/url)
+    keywords: [read article, get page content, fetch url, summarize webpage, extract text from url, show website content, read this page, summarize, url]
+    weight: 0.7
     params:
       - name: url
         required: true

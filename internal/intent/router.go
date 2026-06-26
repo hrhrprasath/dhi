@@ -102,7 +102,7 @@ func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent
 		Model:       r.model,
 		Messages:    messages,
 		MaxTokens:   r.config.MaxTokens,
-		Temperature: r.config.Temperature,
+		Temperature: 0.1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("route request failed: %w", err)
