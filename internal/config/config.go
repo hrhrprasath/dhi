@@ -17,9 +17,10 @@ var (
 )
 
 type AIConfig struct {
-	AI        ai.Config            `yaml:"ai"`
-	Providers map[string]ai.Config `yaml:"providers,omitempty"`
-	RSS       RSSConfig            `yaml:"rss"`
+	AI          ai.Config            `yaml:"ai"`
+	Providers   map[string]ai.Config `yaml:"providers,omitempty"`
+	RSS         RSSConfig            `yaml:"rss"`
+	AccentColor string               `yaml:"accent_color"`
 }
 
 type RSSConfig struct {
@@ -81,6 +82,7 @@ func defaultConfig() AIConfig {
 		RSS: RSSConfig{
 			SkipShorts: true,
 		},
+		AccentColor: "#FFA500",
 	}
 }
 

@@ -84,6 +84,7 @@ func main() {
 		}
 	}()
 
+	tui.SetAccentColor(cfg.AccentColor)
 	model := tui.NewModel(logger, taskMgr, router, exec, topicMgr, sysSvc, todoMgr, rssMgr, learningEngine, settingsMgr)
 
 	p := tea.NewProgram(model)

@@ -17,6 +17,16 @@ var (
 				BorderForeground(accentColor)
 )
 
+func SetAccentColor(hex string) {
+	if hex == "" {
+		hex = "#FFA500"
+	}
+	accentColor = lipgloss.Color(hex)
+	focusedBorderStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(accentColor)
+}
+
 func max(a, b int) int {
 	if a > b {
 		return a
