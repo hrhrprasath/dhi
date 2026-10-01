@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"dhi_harness/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/ai"
 )
 
 func TestSummarize_Success(t *testing.T) {

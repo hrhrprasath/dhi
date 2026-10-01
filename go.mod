@@ -1,4 +1,4 @@
-module dhi_harness
+module github.com/hrhrprasath/dhi
 
 go 1.26
 

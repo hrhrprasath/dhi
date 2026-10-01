@@ -3,7 +3,7 @@ package tui
 import (
 	"fmt"
 
-	"dhi_harness/internal/services"
+	"github.com/hrhrprasath/dhi/internal/services"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"

@@ -1,6 +1,7 @@
 # Binaries
 /dhi
 /build/
+/dist/
 
 # Runtime data
 .data/
@@ -29,6 +30,7 @@ coverage.out
 # Dependencies
 node_modules/
 vendor/
+.opencode/
 
 # Temporary files
 /tmp/

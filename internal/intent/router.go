@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"dhi_harness/internal/ai"
-	"dhi_harness/internal/prompt"
-	"dhi_harness/internal/services"
+	"github.com/hrhrprasath/dhi/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/prompt"
+	"github.com/hrhrprasath/dhi/internal/services"
 )
 
 type ParsedIntent struct {

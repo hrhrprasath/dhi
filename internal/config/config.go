@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"dhi_harness/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/ai"
 
 	"gopkg.in/yaml.v3"
 )
@@ -75,7 +75,7 @@ func defaultConfig() AIConfig {
 		AI: ai.Config{
 			Provider:    "ollama",
 			BaseURL:     "http://localhost:11434/v1",
-			Model:       "qwen2.5:7b",
+			Model:       "qwen2.5:1.5b",
 			MaxTokens:   4096,
 			Temperature: 0.7,
 		},

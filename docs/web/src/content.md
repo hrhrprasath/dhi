@@ -4,25 +4,25 @@
 
 ### Prerequisites
 
-DHI requires **Go 1.26+**, **Ollama** with a local model (e.g. `qwen2.5:7b` or `qwen2.5:3b`), and optionally **ddgr** for web search.
+DHI works on **macOS** and **Linux** and requires **Go 1.26+**, **Ollama** with `qwen2.5:1.5b` (default), plus `rg`, `jq`, and `curl`. `ddgr` + `agent-browser` power web_search/fetch_url; `s-search` powers site_search.
 
 ### Quick install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hrhrprasath/dhi_harness/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hrhrprasath/dhi/main/install.sh | sh
 ```
 
 ### Or install via Go
 
 ```bash
-go install github.com/hrhrprasath/dhi_harness/cmd/dhi@latest
+go install github.com/hrhrprasath/dhi/cmd/dhi@latest
 ```
 
 ### Build from source
 
 ```bash
-git clone https://github.com/hrhrprasath/dhi_harness.git
-cd dhi_harness && go build -o build/dhi ./cmd/dhi
+git clone https://github.com/hrhrprasath/dhi.git
+cd dhi && go build -o build/dhi ./cmd/dhi
 ./build/dhi
 ```
 
@@ -214,6 +214,27 @@ Type these in the input bar and press `Enter`:
 
 Type `/` followed by a few characters — matching commands appear below the input. Press **Tab** to cycle through suggestions, **Enter** to confirm.
 
+### RSS Reader
+
+`/rss` opens the built-in feed reader. Add sources with `/rss add <feed-url>` — they are stored as OPML in `~/.dhi/data/rss/feed.opml` (override with `DHI_RSS_OPML_PATH`), so you can import an existing reader export by replacing that file. Feeds refresh in the background while DHI runs.
+
+Three tabs (`←` / `→` to switch):
+
+| Tab | Contents |
+|-----|----------|
+| AI CURATED | LLM summary of the latest entries — press `s` to refresh |
+| RAW | Every entry across all feeds |
+| BOOKMARKS | Entries you saved with `B` |
+
+Keys inside the reader: `↑` / `↓` navigate, `Enter` opens the entry URL in your browser, `B` toggles a bookmark, `R` removes a feed source, `s` refreshes the AI summary (or fetches the entry into a topic), `Esc` closes.
+
+YouTube noise is filtered via `~/.dhi/config.yaml`:
+
+```yaml
+rss:
+  skip_shorts: true
+```
+
 ### Inline Commands
 
 Input without a `/` prefix is sent to the LLM classifier. DHI automatically detects your intent and runs the matching pipeline:
@@ -281,6 +302,21 @@ Local LLMs provide classification, conversation, and synthesis — working *for*
 </div>
 
 <div class="feature-item">
+<h4>Site Search</h4>
+<p>Site-scoped search opened in your browser via s-search</p>
+</div>
+
+<div class="feature-item">
+<h4>Fetch URL</h4>
+<p>Extract page content via agent-browser with LLM summarization</p>
+</div>
+
+<div class="feature-item">
+<h4>Open URL</h4>
+<p>Open any link in the default browser, with unsafe-URL rejection</p>
+</div>
+
+<div class="feature-item">
 <h4>Todo</h4>
 <p>Full CRUD manager with persistent JSON storage</p>
 </div>
@@ -292,7 +328,7 @@ Local LLMs provide classification, conversation, and synthesis — working *for*
 
 <div class="feature-item">
 <h4>RSS</h4>
-<p>Feed management with topic-based conversation storage</p>
+<p>OPML feed reader with bookmarks, background refresh, and AI-curated summaries</p>
 </div>
 
 <div class="feature-item">
@@ -302,7 +338,7 @@ Local LLMs provide classification, conversation, and synthesis — working *for*
 
 <div class="feature-item">
 <h4>Music</h4>
-<p>Spotify search + playback via Applescript (macOS)</p>
+<p>Spotify search + playback (macOS via AppleScript, Linux via xdg-open)</p>
 </div>
 
 <div class="feature-item">
@@ -384,14 +420,30 @@ curl -s "https://api.example.com/search?q=$QUERY" | jq '.'
 
 ### Config &mdash; `~/.dhi/config.yaml`
 
-Switch AI providers, models, or adjust generation parameters. Supports local (Ollama), Groq, or OpenRouter.
+Switch AI providers, models, or adjust generation parameters. Ollama is the default; any OpenAI-compatible endpoint works via the `ai:` block (keys use `${VAR}` environment expansion):
 
 ```yaml
 # ~/.dhi/config.yaml
 ai:
   provider: ollama
   base_url: http://localhost:11434/v1
-  model: qwen2.5:7b
+  model: qwen2.5:1.5b
   max_tokens: 4096
   temperature: 0.7
+```
+
+```yaml
+# Groq
+ai:
+  provider: groq
+  base_url: https://api.groq.com/openai/v1
+  api_key: ${GROQ_API_KEY}
+  model: llama-3.1-70b-versatile
+
+# OpenRouter
+ai:
+  provider: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key: ${OPENROUTER_API_KEY}
+  model: anthropic/claude-sonnet-4
 ```

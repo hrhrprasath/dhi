@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"dhi_harness/internal/task"
-	"dhi_harness/internal/todo"
+	"github.com/hrhrprasath/dhi/internal/task"
+	"github.com/hrhrprasath/dhi/internal/todo"
 )
 
 type Handlers struct {

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dhi_harness/internal/summarizer"
-	"dhi_harness/internal/task"
-	"dhi_harness/internal/todo"
+	"github.com/hrhrprasath/dhi/internal/summarizer"
+	"github.com/hrhrprasath/dhi/internal/task"
+	"github.com/hrhrprasath/dhi/internal/todo"
 )
 
 func runCmd(name string, args ...string) (string, error) {

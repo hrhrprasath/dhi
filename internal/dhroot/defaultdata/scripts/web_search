@@ -1,26 +1,47 @@
 #!/bin/bash
 
 if ! command -v agent-browser &>/dev/null; then
-  echo "Error: agent-browser not found. Install with: brew install agent-browser && agent-browser install" >&2
+  echo "Error: agent-browser not found." >&2
+  echo "  macOS: brew install agent-browser && agent-browser install" >&2
+  echo "  Linux: brew install agent-browser && agent-browser install" >&2
+  echo "    or: npm i -g agent-browser && agent-browser install" >&2
   exit 1
 fi
 if ! command -v ddgr &>/dev/null; then
-  echo "Error: ddgr not found. Install with: brew install ddgr" >&2
+  echo "Error: ddgr not found." >&2
+  echo "  macOS: brew install ddgr" >&2
+  echo "  Linux (Debian/Ubuntu): sudo apt install ddgr" >&2
+  echo "  Linux (Fedora): sudo dnf install ddgr" >&2
+  echo "  Linux (Arch): sudo pacman -S ddgr" >&2
   exit 1
 fi
+
+# ── Portable file mtime (BSD stat on macOS, GNU stat on Linux) ──
+file_mtime() {
+  case "$(uname)" in
+    Darwin) stat -f %m "$1" 2>/dev/null ;;
+    *) stat -c %Y "$1" 2>/dev/null ;;
+  esac
+}
 
 # ── Dynamic Chrome UA with 10-day cache ──
 CHROME_CACHE="$HOME/.dhi/data/chrome_version"
 CHROME_MAJOR=""
 if [ -f "$CHROME_CACHE" ]; then
   cached=$(cat "$CHROME_CACHE")
-  file_age=$(( $(date +%s) - $(stat -f %m "$CHROME_CACHE" 2>/dev/null || echo 0) ))
+  mtime=$(file_mtime "$CHROME_CACHE")
+  file_age=$(( $(date +%s) - ${mtime:-0} ))
   [ "$file_age" -lt 864000 ] && [ -n "$cached" ] && CHROME_MAJOR="$cached"
 fi
 if [ -z "$CHROME_MAJOR" ]; then
   for candidate in \
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-    "$HOME/.agent-browser/browsers/"*"/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing"; do
+    "$HOME/.agent-browser/browsers/"*"/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+    "$HOME/.cache/ms-playwright/chromium-"*"/chrome-linux/chrome" \
+    "/usr/bin/google-chrome" \
+    "/usr/bin/google-chrome-stable" \
+    "/usr/bin/chromium" \
+    "/usr/bin/chromium-browser"; do
     if [ -x "$candidate" ]; then
       CHROME_MAJOR=$( "$candidate" --version 2>/dev/null | grep -oE '[0-9]+' | head -1 )
       [ -n "$CHROME_MAJOR" ] && break
@@ -30,7 +51,14 @@ if [ -z "$CHROME_MAJOR" ]; then
   mkdir -p "$(dirname "$CHROME_CACHE")" 2>/dev/null
   echo "$CHROME_MAJOR" > "$CHROME_CACHE"
 fi
-AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36"
+case "$(uname)" in
+  Darwin)
+    AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36"
+    ;;
+  *)
+    AGENT_BROWSER_USER_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36"
+    ;;
+esac
 export AGENT_BROWSER_USER_AGENT
 
 q="$*"

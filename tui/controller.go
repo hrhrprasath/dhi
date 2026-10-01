@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"dhi_harness/internal/intent"
-	"dhi_harness/internal/services"
-	"dhi_harness/internal/task"
-	"dhi_harness/internal/topic"
+	"github.com/hrhrprasath/dhi/internal/intent"
+	"github.com/hrhrprasath/dhi/internal/services"
+	"github.com/hrhrprasath/dhi/internal/task"
+	"github.com/hrhrprasath/dhi/internal/topic"
 )
 
 // ─── Background Loops ───

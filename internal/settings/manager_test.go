@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"dhi_harness/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/ai"
 )
 
 func TestNewManager(t *testing.T) {

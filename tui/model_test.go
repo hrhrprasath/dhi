@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"dhi_harness/internal/settings"
+	"github.com/hrhrprasath/dhi/internal/settings"
 
 	"charm.land/bubbles/v2/viewport"
 )

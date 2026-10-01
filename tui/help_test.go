@@ -45,6 +45,15 @@ func TestBuildHelpContent_ContainsCommands(t *testing.T) {
 	if !strings.Contains(content, "/log") {
 		t.Errorf("buildHelpContent() should contain '/log'")
 	}
+	if !strings.Contains(content, "/todo") {
+		t.Errorf("buildHelpContent() should contain '/todo'")
+	}
+	if !strings.Contains(content, "/schedule") {
+		t.Errorf("buildHelpContent() should contain '/schedule'")
+	}
+	if !strings.Contains(content, "/rss") {
+		t.Errorf("buildHelpContent() should contain '/rss'")
+	}
 }
 
 func TestBuildHelpContent_ContainsNavigation(t *testing.T) {

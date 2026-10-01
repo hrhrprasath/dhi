@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"dhi_harness/internal/dhroot"
-	"dhi_harness/internal/intent"
-	"dhi_harness/internal/pipeline"
-	"dhi_harness/internal/rss"
-	"dhi_harness/internal/services"
-	"dhi_harness/internal/settings"
-	"dhi_harness/internal/task"
-	"dhi_harness/internal/todo"
-	"dhi_harness/internal/topic"
+	"github.com/hrhrprasath/dhi/internal/dhroot"
+	"github.com/hrhrprasath/dhi/internal/intent"
+	"github.com/hrhrprasath/dhi/internal/pipeline"
+	"github.com/hrhrprasath/dhi/internal/rss"
+	"github.com/hrhrprasath/dhi/internal/services"
+	"github.com/hrhrprasath/dhi/internal/settings"
+	"github.com/hrhrprasath/dhi/internal/task"
+	"github.com/hrhrprasath/dhi/internal/todo"
+	"github.com/hrhrprasath/dhi/internal/topic"
 
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/spinner"
@@ -940,7 +940,7 @@ func (m *Model) handleArrowDown() tea.Cmd {
 		m.cc.convView.ScrollDown(3)
 	case focusTopics:
 		all := m.topicMgr.ListTopics()
-	limit := 17
+		limit := 17
 		if len(all) > limit {
 			all = all[:limit]
 		}

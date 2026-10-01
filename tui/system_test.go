@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"dhi_harness/internal/services"
+	"github.com/hrhrprasath/dhi/internal/services"
 
 	"charm.land/bubbles/v2/progress"
 )

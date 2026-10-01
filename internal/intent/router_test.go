@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"dhi_harness/internal/ai"
-	"dhi_harness/internal/services"
+	"github.com/hrhrprasath/dhi/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/services"
 )
 
 func TestParseJSON_ValidJSONReturnsParsedIntent(t *testing.T) {

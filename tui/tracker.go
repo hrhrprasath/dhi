@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"dhi_harness/internal/rss"
-	"dhi_harness/internal/task"
-	"dhi_harness/internal/todo"
+	"github.com/hrhrprasath/dhi/internal/rss"
+	"github.com/hrhrprasath/dhi/internal/task"
+	"github.com/hrhrprasath/dhi/internal/todo"
 
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"

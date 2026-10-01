@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"dhi_harness/internal/ai"
-	"dhi_harness/internal/summarizer"
-	"dhi_harness/internal/task"
+	"github.com/hrhrprasath/dhi/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/summarizer"
+	"github.com/hrhrprasath/dhi/internal/task"
 )
 
 func newTestExecutor(t *testing.T) *Executor {

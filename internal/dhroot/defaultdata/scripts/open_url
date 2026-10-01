@@ -7,4 +7,17 @@ if ! echo "$url" | grep -qiE '^https?://[a-zA-Z0-9._~:/?#@!$&'"'"'()*+,;=-]+$'; 
     echo "Rejected: invalid or unsafe URL" >&2
     exit 1
 fi
-open "$url"
+case "$(uname)" in
+  Darwin)
+    open "$url"
+    ;;
+  Linux)
+    xdg-open "$url"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    start "$url"
+    ;;
+  *)
+    xdg-open "$url" 2>/dev/null || open "$url"
+    ;;
+esac

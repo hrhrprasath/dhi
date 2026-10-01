@@ -614,20 +614,20 @@ Get DHI running on your machine in minutes
 </p>
 <section id="prerequisites" class="level3">
 <h3>Prerequisites</h3>
-<p>DHI requires <strong>Go 1.26+</strong>, <strong>Ollama</strong> with a local model (e.g. <code>qwen2.5:7b</code> or <code>qwen2.5:3b</code>), and optionally <strong>ddgr</strong> for web search.</p>
+<p>DHI works on <strong>macOS</strong> and <strong>Linux</strong> and requires <strong>Go 1.26+</strong>, <strong>Ollama</strong> with <code>qwen2.5:1.5b</code> (default), plus <code>rg</code>, <code>jq</code>, and <code>curl</code>. <code>ddgr</code> + <code>agent-browser</code> power web_search/fetch_url; <code>s-search</code> powers site_search.</p>
 </section>
 <section id="quick-install" class="level3">
 <h3>Quick install</h3>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSL</span> https://raw.githubusercontent.com/hrhrprasath/dhi_harness/main/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSL</span> https://raw.githubusercontent.com/hrhrprasath/dhi/main/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div>
 </section>
 <section id="or-install-via-go" class="level3">
 <h3>Or install via Go</h3>
-<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> install github.com/hrhrprasath/dhi_harness/cmd/dhi@latest</span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">go</span> install github.com/hrhrprasath/dhi/cmd/dhi@latest</span></code></pre></div>
 </section>
 <section id="build-from-source" class="level3">
 <h3>Build from source</h3>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/hrhrprasath/dhi_harness.git</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> dhi_harness <span class="kw">&amp;&amp;</span> <span class="ex">go</span> build <span class="at">-o</span> build/dhi ./cmd/dhi</span>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/hrhrprasath/dhi.git</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> dhi <span class="kw">&amp;&amp;</span> <span class="ex">go</span> build <span class="at">-o</span> build/dhi ./cmd/dhi</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">./build/dhi</span></span></code></pre></div>
 </section>
 <section id="first-run" class="level3">
@@ -967,6 +967,41 @@ Exit DHI
 <h3>Auto-Completion</h3>
 <p>Type <code>/</code> followed by a few characters — matching commands appear below the input. Press <strong>Tab</strong> to cycle through suggestions, <strong>Enter</strong> to confirm.</p>
 </section>
+<section id="rss-reader" class="level3">
+<h3>RSS Reader</h3>
+<p><code>/rss</code> opens the built-in feed reader. Add sources with <code>/rss add &lt;feed-url&gt;</code> — they are stored as OPML in <code>~/.dhi/data/rss/feed.opml</code> (override with <code>DHI_RSS_OPML_PATH</code>), so you can import an existing reader export by replacing that file. Feeds refresh in the background while DHI runs.</p>
+<p>Three tabs (<code>←</code> / <code>→</code> to switch):</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 66%" />
+</colgroup>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AI CURATED</td>
+<td>LLM summary of the latest entries — press <code>s</code> to refresh</td>
+</tr>
+<tr>
+<td>RAW</td>
+<td>Every entry across all feeds</td>
+</tr>
+<tr>
+<td>BOOKMARKS</td>
+<td>Entries you saved with <code>B</code></td>
+</tr>
+</tbody>
+</table>
+<p>Keys inside the reader: <code>↑</code> / <code>↓</code> navigate, <code>Enter</code> opens the entry URL in your browser, <code>B</code> toggles a bookmark, <code>R</code> removes a feed source, <code>s</code> refreshes the AI summary (or fetches the entry into a topic), <code>Esc</code> closes.</p>
+<p>YouTube noise is filtered via <code>~/.dhi/config.yaml</code>:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rss</span><span class="kw">:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">skip_shorts</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span></code></pre></div>
+</section>
 <section id="inline-commands" class="level3">
 <h3>Inline Commands</h3>
 <p>Input without a <code>/</code> prefix is sent to the LLM classifier. DHI automatically detects your intent and runs the matching pipeline:</p>
@@ -1058,6 +1093,30 @@ ddgr + agent-browser with auto-summarization via LLM
 </div>
 <div class="feature-item">
 <h4>
+Site Search
+</h4>
+<p>
+Site-scoped search opened in your browser via s-search
+</p>
+</div>
+<div class="feature-item">
+<h4>
+Fetch URL
+</h4>
+<p>
+Extract page content via agent-browser with LLM summarization
+</p>
+</div>
+<div class="feature-item">
+<h4>
+Open URL
+</h4>
+<p>
+Open any link in the default browser, with unsafe-URL rejection
+</p>
+</div>
+<div class="feature-item">
+<h4>
 Todo
 </h4>
 <p>
@@ -1077,7 +1136,7 @@ Natural language time parsing + cron-based recurring tasks
 RSS
 </h4>
 <p>
-Feed management with topic-based conversation storage
+OPML feed reader with bookmarks, background refresh, and AI-curated summaries
 </p>
 </div>
 <div class="feature-item">
@@ -1093,7 +1152,7 @@ Yahoo Finance lookup via curl/jq pipeline
 Music
 </h4>
 <p>
-Spotify search + playback via Applescript (macOS)
+Spotify search + playback (macOS via AppleScript, Linux via xdg-open)
 </p>
 </div>
 <div class="feature-item">
@@ -1122,13 +1181,13 @@ Extend DHI without touching Go code
 <section id="pipelines-.dhipipelines.yaml" class="level3">
 <h3>Pipelines — <code>~/.dhi/pipelines.yaml</code></h3>
 <p>Define new actions by adding to the YAML. Each pipeline has a name, action type, and optional weight for self-learning.</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.dhi/pipelines.yaml</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">pipelines</span><span class="kw">:</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">my_command</span><span class="kw">:</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> bash</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">command</span><span class="kw">:</span><span class="at"> scripts/my_script {arg}</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">weight</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.6</span></span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">summarize</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.dhi/pipelines.yaml</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">pipelines</span><span class="kw">:</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">my_command</span><span class="kw">:</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> bash</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">command</span><span class="kw">:</span><span class="at"> scripts/my_script {arg}</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">weight</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.6</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">summarize</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span></code></pre></div>
 </section>
 <section id="action-types" class="level3">
 <h3>Action Types</h3>
@@ -1165,57 +1224,70 @@ Extend DHI without touching Go code
 </tbody>
 </table>
 <p>Examples of each type:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pipelines</span><span class="kw">:</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">greet</span><span class="kw">:</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> bash</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">script</span><span class="kw">:</span><span class="at"> scripts/greet {name}</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">check_api</span><span class="kw">:</span></span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> http</span></span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">url</span><span class="kw">:</span><span class="at"> https://api.example.com/status</span></span>
-<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">method</span><span class="kw">:</span><span class="at"> GET</span></span>
-<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">summarize</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
-<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">deploy</span><span class="kw">:</span></span>
-<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> exec</span></span>
-<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">command</span><span class="kw">:</span><span class="at"> /usr/local/bin/deploy</span></span>
-<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">args</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="st">&quot;--env&quot;</span><span class="kw">,</span><span class="at"> </span><span class="st">&quot;staging&quot;</span><span class="kw">]</span></span>
-<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">todo</span><span class="kw">:</span></span>
-<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> internal</span></span>
-<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">handler</span><span class="kw">:</span><span class="at"> todo</span></span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">pipelines</span><span class="kw">:</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">greet</span><span class="kw">:</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> bash</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">script</span><span class="kw">:</span><span class="at"> scripts/greet {name}</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">check_api</span><span class="kw">:</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> http</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">url</span><span class="kw">:</span><span class="at"> https://api.example.com/status</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">method</span><span class="kw">:</span><span class="at"> GET</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">summarize</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">deploy</span><span class="kw">:</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> exec</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">command</span><span class="kw">:</span><span class="at"> /usr/local/bin/deploy</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">args</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="st">&quot;--env&quot;</span><span class="kw">,</span><span class="at"> </span><span class="st">&quot;staging&quot;</span><span class="kw">]</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">todo</span><span class="kw">:</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">action</span><span class="kw">:</span><span class="at"> internal</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">handler</span><span class="kw">:</span><span class="at"> todo</span></span></code></pre></div>
 </section>
 <section id="scripts-.dhiscripts" class="level3">
 <h3>Scripts — <code>~/.dhi/scripts/</code></h3>
 <p>Bash scripts are referenced by pipeline actions. Drop a new script in <code>~/.dhi/scripts/</code> and wire it in <code>pipelines.yaml</code>.</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env bash</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.dhi/scripts/my_script</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="va">QUERY</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$1</span><span class="st">&quot;</span></span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="st">&quot;https://api.example.com/search?q=</span><span class="va">$QUERY</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;.&#39;</span></span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env bash</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.dhi/scripts/my_script</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="va">QUERY</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$1</span><span class="st">&quot;</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> <span class="st">&quot;https://api.example.com/search?q=</span><span class="va">$QUERY</span><span class="st">&quot;</span> <span class="kw">|</span> <span class="ex">jq</span> <span class="st">&#39;.&#39;</span></span></code></pre></div>
 </section>
 <section id="config-.dhiconfig.yaml" class="level3">
 <h3>Config — <code>~/.dhi/config.yaml</code></h3>
-<p>Switch AI providers, models, or adjust generation parameters. Supports local (Ollama), Groq, or OpenRouter.</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.dhi/config.yaml</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ai</span><span class="kw">:</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">provider</span><span class="kw">:</span><span class="at"> ollama</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">base_url</span><span class="kw">:</span><span class="at"> http://localhost:11434/v1</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">model</span><span class="kw">:</span><span class="at"> qwen2.5:7b</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_tokens</span><span class="kw">:</span><span class="at"> </span><span class="dv">4096</span></span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">temperature</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.7</span></span></code></pre></div>
+<p>Switch AI providers, models, or adjust generation parameters. Ollama is the default; any OpenAI-compatible endpoint works via the <code>ai:</code> block (keys use <code>${VAR}</code> environment expansion):</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ~/.dhi/config.yaml</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ai</span><span class="kw">:</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">provider</span><span class="kw">:</span><span class="at"> ollama</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">base_url</span><span class="kw">:</span><span class="at"> http://localhost:11434/v1</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">model</span><span class="kw">:</span><span class="at"> qwen2.5:1.5b</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">max_tokens</span><span class="kw">:</span><span class="at"> </span><span class="dv">4096</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">temperature</span><span class="kw">:</span><span class="at"> </span><span class="fl">0.7</span></span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Groq</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">ai</span><span class="kw">:</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">provider</span><span class="kw">:</span><span class="at"> groq</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">base_url</span><span class="kw">:</span><span class="at"> https://api.groq.com/openai/v1</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">api_key</span><span class="kw">:</span><span class="at"> ${GROQ_API_KEY}</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">model</span><span class="kw">:</span><span class="at"> llama-3.1-70b-versatile</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="co"># OpenRouter</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="fu">ai</span><span class="kw">:</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">provider</span><span class="kw">:</span><span class="at"> openrouter</span></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">base_url</span><span class="kw">:</span><span class="at"> https://openrouter.ai/api/v1</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">api_key</span><span class="kw">:</span><span class="at"> ${OPENROUTER_API_KEY}</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">model</span><span class="kw">:</span><span class="at"> anthropic/claude-sonnet-4</span></span></code></pre></div>
 </section>
 </section>
 
         <footer>
             <div class="social">
                 <a
-                    href="https://github.com/hrhrprasath/dhi_harness"
+                    href="https://github.com/hrhrprasath/dhi"
                     target="_blank"
                     rel="noopener"
                     >GitHub</a
                 >
                 <a
-                    href="https://github.com/hrhrprasath/dhi_harness/blob/main/LICENSE.md"
+                    href="https://github.com/hrhrprasath/dhi/blob/main/LICENSE"
                     target="_blank"
                     rel="noopener"
                     >MIT License</a

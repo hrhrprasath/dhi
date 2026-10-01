@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"dhi_harness/internal/topic"
+	"github.com/hrhrprasath/dhi/internal/topic"
 
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"

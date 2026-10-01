@@ -59,7 +59,7 @@ make lint    # golangci-lint run (uses .golangci.yml)
 Organize imports in groups with blank lines between:
 1. Standard library (`fmt`, `strings`, `time`, etc.)
 2. External packages (`charm.land/bubbletea/v2`, `charm.land/lipgloss/v2`, `gopkg.in/yaml.v3`)
-3. Internal packages (`dhi_harness/internal/...`)
+3. Internal packages (`github.com/hrhrprasath/dhi/internal/...`)
 
 ```go
 import (
@@ -70,8 +70,8 @@ import (
 	"charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"dhi_harness/internal/config"
-	"dhi_harness/internal/intent"
+	"github.com/hrhrprasath/dhi/internal/config"
+	"github.com/hrhrprasath/dhi/internal/intent"
 )
 ```
 

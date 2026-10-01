@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"dhi_harness/internal/ai"
-	"dhi_harness/internal/prompt"
+	"github.com/hrhrprasath/dhi/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/prompt"
 )
 
 type Summarizer struct {

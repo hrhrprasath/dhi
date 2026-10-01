@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"dhi_harness/internal/ai"
+	"github.com/hrhrprasath/dhi/internal/ai"
 )
 
 type Settings struct {

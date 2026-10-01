@@ -19,9 +19,6 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: linux
-        goarch: arm64
 
 archives:
   - format: tar.gz
@@ -60,7 +57,7 @@ changelog:
 
 release:
   github:
-    owner: anomalyco
+    owner: hrhrprasath
     name: dhi
   header: |
     ## DHI Harness {{ .Version }}
