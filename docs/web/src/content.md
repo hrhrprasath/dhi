@@ -9,7 +9,7 @@ DHI works on **macOS** and **Linux** and requires **Go 1.26+**, **Ollama** with 
 ### Quick install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hrhrprasath/dhi/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/hrhrprasath/dhi/dhi/install.sh | sh
 ```
 
 ### Or install via Go

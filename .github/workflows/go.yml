@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, dhi]
+    branches: [dhi]
     tags: ["v*"]
   pull_request:
-    branches: [main, dhi]
+    branches: [dhi]
 
 permissions:
   contents: read
