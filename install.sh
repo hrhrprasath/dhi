@@ -17,6 +17,24 @@ echo ""
 have() { command -v "$1" &>/dev/null; }
 have_brew() { command -v brew &>/dev/null; }
 
+check_go() {
+  if ! have go; then
+    echo "Error: Go toolchain not found. Install Go 1.26+ then re-run." >&2
+    echo "  macOS: brew install go" >&2
+    echo "  Linux: https://go.dev/dl/ (or via package manager)" >&2
+    exit 1
+  fi
+  GO_VER="$(go version | awk '{print $3}' | sed 's/^go//')"
+  GO_MAJOR="$(echo "$GO_VER" | cut -d. -f1)"
+  GO_MINOR="$(echo "$GO_VER" | cut -d. -f2)"
+  if [ "$GO_MAJOR" -lt 1 ] || { [ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 26 ]; }; then
+    echo "Error: Go $GO_VER found, but Go 1.26+ is required." >&2
+    exit 1
+  fi
+  echo "  ok: go $GO_VER"
+}
+check_go
+
 install_macos() {
   if ! have_brew; then
     echo "Error: Homebrew not found. Install from https://brew.sh then re-run." >&2
