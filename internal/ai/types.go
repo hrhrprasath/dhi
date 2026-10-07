@@ -7,6 +7,8 @@ type Config struct {
 	Model       string  `yaml:"model"`
 	MaxTokens   int     `yaml:"max_tokens"`
 	Temperature float64 `yaml:"temperature"`
+
+	ReasoningEffort string `yaml:"reasoning_effort"`
 }
 
 type ChatMessage struct {
@@ -19,7 +21,9 @@ type ChatRequest struct {
 	Messages    []ChatMessage `json:"messages"`
 	MaxTokens   int           `json:"max_tokens,omitempty"`
 	Temperature float64       `json:"temperature,omitempty"`
-	Stream      bool          `json:"stream"`
+
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	Stream          bool   `json:"stream"`
 }
 
 type ChatCompletion struct {

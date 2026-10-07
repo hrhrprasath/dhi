@@ -40,6 +40,12 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 
 func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
 	req.Stream = false
+	if req.ReasoningEffort == "" {
+		req.ReasoningEffort = c.config.ReasoningEffort
+	}
+	if strings.EqualFold(req.ReasoningEffort, "none") {
+		req.ReasoningEffort = ""
+	}
 
 	body, err := json.Marshal(req)
 	if err != nil {

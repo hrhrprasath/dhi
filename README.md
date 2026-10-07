@@ -69,6 +69,7 @@ ai:
   model: qwen2.5:1.5b
   max_tokens: 4096
   temperature: 0.7
+  reasoning_effort: none
 ```
 
 ### Other providers

@@ -78,6 +78,8 @@ func defaultConfig() AIConfig {
 			Model:       "qwen2.5:1.5b",
 			MaxTokens:   4096,
 			Temperature: 0.7,
+
+			ReasoningEffort: "none",
 		},
 		RSS: RSSConfig{
 			SkipShorts: true,
