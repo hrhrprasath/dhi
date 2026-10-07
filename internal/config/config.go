@@ -80,6 +80,8 @@ func defaultConfig() AIConfig {
 			Temperature: 0.7,
 
 			ReasoningEffort: "none",
+
+			SystemOneModel: "",
 		},
 		RSS: RSSConfig{
 			SkipShorts: true,

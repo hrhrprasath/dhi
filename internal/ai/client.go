@@ -40,11 +40,15 @@ func (c *Client) newRequest(method, path string, body io.Reader) (*http.Request,
 
 func (c *Client) Chat(ctx context.Context, req ChatRequest) (string, error) {
 	req.Stream = false
-	if req.ReasoningEffort == "" {
-		req.ReasoningEffort = c.config.ReasoningEffort
-	}
-	if strings.EqualFold(req.ReasoningEffort, "none") {
-		req.ReasoningEffort = ""
+	if req.DisableThinking {
+		req.ReasoningEffort = "none"
+	} else {
+		if req.ReasoningEffort == "" {
+			req.ReasoningEffort = c.config.ReasoningEffort
+		}
+		if strings.EqualFold(req.ReasoningEffort, "none") {
+			req.ReasoningEffort = ""
+		}
 	}
 
 	body, err := json.Marshal(req)
@@ -98,6 +102,39 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest) (<-chan string
 	}()
 
 	return tokenCh, errCh
+}
+
+func (c *Client) SystemOne(ctx context.Context, req SystemOneRequest) (SystemOneResponse, error) {
+	body, err := json.Marshal(req)
+	if err != nil {
+		return SystemOneResponse{}, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := c.newRequest("POST", "/systemone", bytes.NewReader(body))
+	if err != nil {
+		return SystemOneResponse{}, fmt.Errorf("create request: %w", err)
+	}
+	httpReq = httpReq.WithContext(ctx)
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return SystemOneResponse{}, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return SystemOneResponse{}, fmt.Errorf("API returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var out SystemOneResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return SystemOneResponse{}, fmt.Errorf("parse response: %w", err)
+	}
+	if len(out.Answers) == 0 {
+		return SystemOneResponse{}, fmt.Errorf("empty answers from systemone")
+	}
+	return out, nil
 }
 
 func (c *Client) ListModels(ctx context.Context) ([]string, error) {

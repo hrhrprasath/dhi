@@ -29,24 +29,29 @@ type WeightProvider interface {
 }
 
 type Router struct {
-	client       *ai.Client
-	model        string
-	config       ai.Config
-	logger       *services.Logger
-	weights      WeightProvider
-	dataDir      string
-	pipelinePath string
+	client         *ai.Client
+	model          string
+	systemOneModel string
+	config         ai.Config
+	logger         *services.Logger
+	weights        WeightProvider
+	dataDir        string
+	pipelinePath   string
 }
 
 func NewRouter(cfg ai.Config, logger *services.Logger, dataDir, pipelinePath string) *Router {
 	logger.Info("ROUTER", fmt.Sprintf("AI Router initialized (provider: %s)", cfg.Provider))
+	if cfg.SystemOneModel != "" {
+		logger.Info("ROUTER", fmt.Sprintf("Intent routing via systemone model: %s", cfg.SystemOneModel))
+	}
 	return &Router{
-		client:       ai.NewClient(cfg),
-		model:        cfg.Model,
-		config:       cfg,
-		logger:       logger,
-		dataDir:      dataDir,
-		pipelinePath: pipelinePath,
+		client:         ai.NewClient(cfg),
+		model:          cfg.Model,
+		systemOneModel: cfg.SystemOneModel,
+		config:         cfg,
+		logger:         logger,
+		dataDir:        dataDir,
+		pipelinePath:   pipelinePath,
 	}
 }
 
@@ -75,6 +80,10 @@ func (r *Router) buildWeightLines(userInput string) map[string]string {
 
 func (r *Router) Route(userInput, summaryText, topicTitle string) (*ParsedIntent, error) {
 	r.logger.Info("ROUTER", fmt.Sprintf("User input: %s", userInput))
+
+	if r.systemOneModel != "" {
+		return r.routeSystemOne(userInput)
+	}
 
 	calBlock := ""
 	keywordBlock := ""

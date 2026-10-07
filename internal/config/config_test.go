@@ -113,3 +113,46 @@ func TestLoadInvalidYAML(t *testing.T) {
 		t.Error("expected error for invalid YAML, got nil")
 	}
 }
+
+func TestDefaultConfigSystemOneModelEmpty(t *testing.T) {
+	cfg := defaultConfig()
+	if cfg.AI.SystemOneModel != "" {
+		t.Errorf("expected empty systemone_model, got %q", cfg.AI.SystemOneModel)
+	}
+}
+
+func TestLoadSystemOneModel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := []byte("ai:\n  provider: ollama\n  base_url: http://localhost:11434/v1\n  model: qwen2.5:1.5b\n  systemone_model: tev1:0.8b-mxfp8\n")
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ForceReload(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.AI.SystemOneModel != "tev1:0.8b-mxfp8" {
+		t.Errorf("expected tev1:0.8b-mxfp8, got %q", cfg.AI.SystemOneModel)
+	}
+}
+
+func TestLoadWithoutSystemOneModelKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := []byte("ai:\n  provider: ollama\n  model: qwen2.5:1.5b\n")
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := ForceReload(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.AI.SystemOneModel != "" {
+		t.Errorf("expected empty systemone_model for missing key, got %q", cfg.AI.SystemOneModel)
+	}
+}

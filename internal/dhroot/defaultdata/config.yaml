@@ -8,6 +8,10 @@ ai:
   max_tokens: 4096
   temperature: 0.7
   reasoning_effort: none
+  # Decision-capable model for fast intent routing (POST /v1/systemone).
+  # Leave empty to classify intent with the base model chat path instead.
+  # e.g. systemone_model: tev1:0.8b-mxfp8
+  systemone_model: ""
 
 rss:
   skip_shorts: true
